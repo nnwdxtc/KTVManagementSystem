@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <title>预约房间 - 调试版</title>
+
+    <!-- 保持与原book.html完全相同的引用 -->
+    <script src="/js/check-auth.js?role=顾客"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/simple-datatables@7.2.0/dist/style.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-datatables@7.2.0/dist/umd/simple-datatables.js"></script>
+    <script src="/js/common-head.js"></script>
+
+    <style>
+        .debug-info {
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+    </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+<script src="/js/nav-bar.js"></script>
+
+<div class="container mt-3">
+    <h4>预约房间 - 分页调试</h4>
+
+    <div class="debug-info">
+        <h5>调试面板</h5>
+        <button class="btn btn-sm btn-info" onclick="checkEverything()">检查所有</button>
+        <button class="btn btn-sm btn-warning" onclick="addTestData()">添加测试数据</button>
+        <button class="btn btn-sm btn-success" onclick="forceInit()">强制初始化</button>
+        <button class="btn btn-sm btn-secondary" onclick="clearTable()">清空表格</button>
+        <div id="debugOutput" class="mt-2"></div>
+    </div>
+
+    <!-- 保持原表格结构 -->
+    <table class="table table-bordered datatable" id="reservationTable">
+        <thead>
+        <tr>
+            <th>房间号</th>
+            <th>预约日期</th>
+            <th>开始时间</th>
+            <th>结束时间</th>
+            <th>操作</th>
+        </tr>
+        </thead>
+        <tbody id="reservationList">
+        <!-- 数据动态生成 -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    // ========== 调试工具 ==========
+    function debugLog(message, type = 'info') {
+        const output = document.getElementById('debugOutput');
+        const timestamp = new Date().toLocaleTimeString();
+        const color = type === 'error' ? 'red' : type === 'success' ? 'green' : type === 'warning' ? 'orange' : 'black';
+        output.innerHTML += `<div style="color:${color}">[${timestamp}] ${message}</div>`;
+        console.log(`[DEBUG] ${message}`);
+    }
+
+    function checkEverything() {
+        debugLog('=== 开始全面检查 ===', 'info');
+
+        // 1. 检查库
+        debugLog(`1. simpleDatatables: ${typeof simpleDatatables}`,
+            typeof simpleDatatables === 'function' ? 'success' : 'error');
+
+        // 2. 检查表格元素
+        const table = document.getElementById('reservationTable');
+        debugLog(`2. 表格元素: ${table ? '找到' : '未找到'}`,
+            table ? 'success' : 'error');
+
+        if (table) {
+            debugLog(`  表格class: ${table.className}`);
+            debugLog(`  表格ID: ${table.id}`);
+            debugLog(`  是否有datatable类: ${table.classList.contains('datatable') ? '✅' : '❌'}`);
+        }
+
+        // 3. 检查数据
+        const rows = document.querySelectorAll('#reservationList tr');
+        debugLog(`3. 数据行数: ${rows.length}`,
+            rows.length > 5 ? 'success' : rows.length > 0 ? 'warning' : 'error');
+
+        // 4. 检查是否已初始化
+        debugLog(`4. 表格datatable属性: ${table?.datatable ? '已初始化' : '未初始化'}`);
+
+        // 5. 检查UI元素
+        if (table) {
+            const parent = table.parentElement;
+            const searchBox = parent.querySelector('.datatable-search');
+            const pagination = parent.querySelector('.datatable-pagination');
+
+            debugLog(`5. 搜索框: ${searchBox ? '✅ 显示' : '❌ 未显示'}`);
+            debugLog(`6. 分页控件: ${pagination ? '✅ 显示' : '❌ 未显示'}`);
+
+            if (searchBox && pagination) {
+                debugLog('🎉 分页功能正常！', 'success');
+            } else if (rows.length < 6) {
+                debugLog('⚠️ 数据太少（需要至少6条）', 'warning');
+            }
+        }
+    }
+
+    function addTestData() {
+        debugLog('添加测试数据...', 'info');
+
+        let html = '';
+        for (let i = 1; i <= 20; i++) {
+            html += `
+      <tr>
+        <td>测试房间${i}</td>
+        <td>2024-01-${String(10 + i % 20).padStart(2, '0')}</td>
+        <td>${10 + i % 8}:00</td>
+        <td>${12 + i % 8}:00</td>
+        <td><button class="btn btn-sm btn-danger">取消</button></td>
+      </tr>
+    `;
+        }
+
+        $('#reservationList').html(html);
+        debugLog(`已添加20条测试数据，总行数: ${$('#reservationList tr').length}`, 'success');
+
+        // 尝试初始化
+        setTimeout(forceInit, 300);
+    }
+
+    function forceInit() {
+        debugLog('强制初始化DataTable...', 'info');
+
+        const table = document.getElementById('reservationTable');
+        if (!table) {
+            debugLog('❌ 找不到表格', 'error');
+            return;
+        }
+
+        // 销毁旧的
+        if (table.datatable) {
+            try {
+                table.datatable.destroy();
+                debugLog('旧的DataTable实例已销毁', 'success');
+            } catch(e) {
+                debugLog(`销毁旧实例出错: ${e.message}`, 'warning');
+            }
+            delete table.datatable;
+        }
+
+        // 确保有datatable类
+        if (!table.classList.contains('datatable')) {
+            table.classList.add('datatable');
+            debugLog('已添加datatable类', 'info');
+        }
+
+        // 等待DOM更新
+        setTimeout(() => {
+            try {
+                // 初始化
+                table.datatable = new simpleDatatables.DataTable(table, {
+                    perPage: 5,  // 每页5条，确保分页显示
+                    perPageSelect: [5, 10, 20],
+                    searchable: true,
+                    sortable: true,
+                    labels: {
+                        placeholder: "搜索房间号...",
+                        perPage: "每页显示 {select} 条",
+                        noRows: "没有预约记录",
+                        info: "第 {start} 到 {end} 条，共 {rows} 条"
+                    }
+                });
+
+                debugLog('✅ DataTable初始化成功', 'success');
+
+                // 检查是否真的显示了
+                setTimeout(checkUI, 500);
+
+            } catch (error) {
+                debugLog(`❌ 初始化失败: ${error.message}`, 'error');
+                console.error('初始化错误详情:', error);
+            }
+        }, 100);
+    }
+
+    function checkUI() {
+        const table = document.getElementById('reservationTable');
+        if (!table) return;
+
+        const parent = table.parentElement;
+        const searchBox = parent.querySelector('.datatable-search');
+        const pagination = parent.querySelector('.datatable-pagination');
+
+        debugLog(`UI检查: 搜索框=${searchBox?'✅':'❌'}, 分页=${pagination?'✅':'❌'}`);
+
+        if (!searchBox || !pagination) {
+            debugLog('⚠️ UI未显示，检查可能的原因:', 'warning');
+            debugLog(`1. 表格行数: ${table.querySelectorAll('tbody tr').length}`);
+            debugLog(`2. 表格display样式: ${window.getComputedStyle(table).display}`);
+            debugLog(`3. 父容器overflow: ${window.getComputedStyle(parent).overflow}`);
+        }
+    }
+
+    function clearTable() {
+        $('#reservationList').empty();
+        debugLog('表格已清空', 'info');
+    }
+
+    // ========== 替换原loadReservations函数 ==========
+    function loadReservations() {
+        debugLog('开始加载预约数据...', 'info');
+
+        const user = JSON.parse(sessionStorage.getItem('user') || '{}');
+        const customerId = user.user?.account;
+
+        if (!customerId) {
+            $('#reservationList').html('<tr><td colspan="5" class="text-center text-danger">请先登录</td></tr>');
+            debugLog('❌ 用户未登录', 'error');
+            return;
+        }
+
+        // 显示加载中
+        $('#reservationList').html('<tr><td colspan="5" class="text-center">加载中...</td></tr>');
+
+        // 调用API
+        axios.get('/room/reservations/page', {
+            params: {
+                customerId: customerId,
+                current: 1,
+                size: 100
+            }
+        }).then(res => {
+            debugLog(`API响应: ${res.data.success ? '成功' : '失败'}`,
+                res.data.success ? 'success' : 'error');
+
+            if (res.data.success) {
+                const pageData = res.data.data;
+                const reservations = pageData.records || [];
+
+                debugLog(`获取到 ${reservations.length} 条预约记录`,
+                    reservations.length > 0 ? 'success' : 'warning');
+
+                renderReservations(reservations);
+
+            } else {
+                debugLog(`API错误: ${res.data.message || '未知错误'}`, 'error');
+                $('#reservationList').html('<tr><td colspan="5" class="text-center text-danger">加载失败</td></tr>');
+            }
+
+        }).catch(err => {
+            debugLog(`请求失败: ${err.message}`, 'error');
+            $('#reservationList').html('<tr><td colspan="5" class="text-center text-danger">网络错误</td></tr>');
+        });
+    }
+
+    function renderReservations(reservations) {
+        debugLog(`渲染 ${reservations.length} 条记录...`, 'info');
+
+        let html = '';
+        if (reservations.length > 0) {
+            reservations.forEach((r, index) => {
+                const startDate = r.startTime ? r.startTime.split('T')[0] : '-';
+                const startTime = r.startTime ? r.startTime.split('T')[1]?.substring(0,5) : '-';
+                const endTime = r.endTime ? r.endTime.split('T')[1]?.substring(0,5) : '-';
+
+                html += `<tr>
+        <td>${r.roomId || 'N/A'}</td>
+        <td>${startDate}</td>
+        <td>${startTime}</td>
+        <td>${endTime}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="cancelTest(${index})">取消</button></td>
+      </tr>`;
+            });
+        } else {
+            html = '<tr><td colspan="5" class="text-center">暂无预约记录</td></tr>';
+            debugLog('没有预约记录', 'warning');
+        }
+
+        $('#reservationList').html(html);
+        debugLog(`渲染完成，实际DOM行数: ${$('#reservationList tr').length}`, 'success');
+
+        // 关键：等待DOM完全渲染后再初始化
+        setTimeout(() => {
+            debugLog('DOM渲染完成，准备初始化分页...', 'info');
+            forceInit();
+        }, 500);
+    }
+
+    function cancelTest(index) {
+        debugLog(`取消测试记录 ${index}`, 'info');
+        alert('测试功能: 取消操作');
+    }
+
+    // ========== 页面初始化 ==========
+    $(document).ready(function() {
+        debugLog('页面加载完成', 'success');
+        debugLog(`simpleDatatables库: ${typeof simpleDatatables}`, 'info');
+        debugLog(`jQuery版本: ${$.fn.jquery}`, 'info');
+
+        const user = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (user.user && user.user.account) {
+            debugLog(`用户: ${user.user.account}`, 'success');
+            loadReservations();
+        } else {
+            debugLog('用户未登录，显示测试模式', 'warning');
+            $('#reservationList').html(`
+      <tr><td colspan="5" class="text-center">
+        <div class="alert alert-info">
+          <h6>调试模式</h6>
+          <p>请使用调试按钮测试分页功能</p>
+        </div>
+      </td></tr>
+    `);
+        }
+    });
+</script>
+</body>
+</html>

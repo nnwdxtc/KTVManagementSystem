@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <title>房间管理</title>
+
+    <!-- 1. 登录 & 角色检查（只允许 WAITER） -->
+    <script src="/js/check-auth.js?role=服务员"></script>
+
+    <!-- 2. 公共头 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+    <script src="/js/common-head.js"></script>
+</head>
+<body>
+<!-- 3. 导航栏 -->
+<div id="nav-placeholder"></div>
+<script src="/js/nav-bar.js"></script>
+<!-- 返回主页 -->
+<div class="container mt-2">
+    <a href="/waiter/index.html" class="btn btn-sm btn-outline-secondary">← 返回主页</a>
+</div>
+<div class="container mt-3">
+    <h4>房间状态管理</h4>
+
+    <!-- 操作栏 -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <button class="btn btn-sm btn-success" onclick="$('#addModal').modal('show')">新增房间</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadRooms()">刷新</button>
+
+            <!-- 每页显示条数选择 -->
+            <select class="form-select form-select-sm d-inline-block w-auto ms-2" id="pageSizeSelect" onchange="changePageSize()">
+                <option value="5">5条/页</option>
+                <option value="10" selected>10条/页</option>
+                <option value="20">20条/页</option>
+                <option value="50">50条/页</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            <div class="input-group input-group-sm">
+                <input class="form-control" id="searchKeyword" placeholder="搜索房间号或类型" />
+                <button class="btn btn-outline-secondary" onclick="searchRooms()">搜索</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 表格 -->
+    <table class="table table-bordered align-middle">
+        <thead><tr><th>房间</th><th>房间类型</th><th>销量</th><th>当前状态</th><th>预约时段</th><th>操作</th></tr></thead>
+        <tbody id="tb"></tbody>
+    </table>
+
+    <!-- 分页控件 -->
+    <div class="row mt-3">
+        <div class="col-md-6">
+            <div id="pageInfo" class="text-muted small"></div>
+        </div>
+        <div class="col-md-6">
+            <nav aria-label="房间分页">
+                <ul class="pagination pagination-sm justify-content-end" id="pagination">
+                    <!-- 分页按钮将通过JS动态生成 -->
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- 新增房间模态框 -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">新增房间</h5></div>
+            <form id="addForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>房间号</label>
+                        <input type="text" class="form-control" name="roomId" required placeholder="例：301">
+                    </div>
+                    <div class="mb-3">
+                        <label>房间类型</label>
+                        <select class="form-select" name="roomType" required>
+                            <option value="小包">小包</option>
+                            <option value="中包">中包</option>
+                            <option value="大包">大包</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- Modal -->
+<div class="modal fade" id="modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">修改状态</h5></div>
+            <div class="modal-body">
+                <form id="form">
+                    <input type="hidden" name="roomId">
+                    <div class="mb-3">
+                        <label>新状态</label>
+                        <select class="form-select" name="roomStatus">
+                            <option value="未预约">未预约</option>
+                            <option value="使用中">使用中</option>
+                        </select>
+                    </div>
+                    <div class="mb-3 d-none" id="timeDiv">
+                        <label>开始时间</label>
+                        <input type="datetime-local" class="form-control" name="startTime">
+                        <label>结束时间</label>
+                        <input type="datetime-local" class="form-control" name="endTime">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-primary" id="saveBtn">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 分页参数
+    let currentPage = 1;
+    let pageSize = 10;
+    let totalRecords = 0;
+    let totalPages = 1;
+    let keyword = '';
+
+    const bookMap = {};
+    const loginUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+
+    function loadRooms(page = 1) {
+        currentPage = page;
+        keyword = $('#searchKeyword').val().trim();
+
+        // 显示加载状态
+        $('#tb').html(`
+            <tr>
+                <td colspan="6" class="text-center py-3">
+                    加载中...
+                </td>
+            </tr>
+        `);
+
+        axios.get('/room/list', {
+            params: {
+                current: currentPage,
+                size: pageSize,
+                keyword: keyword
+            }
+        }).then(res => {
+            console.log('房间数据:', res.data);
+
+            let h = '';
+            const rooms = res.data.data || [];
+            const pageData = res.data.data || {};
+
+            // 如果是分页数据
+            if (pageData.records) {
+                totalRecords = pageData.total || rooms.length;
+                totalPages = pageData.pages || 1;
+                currentPage = pageData.current || 1;
+
+                rooms.forEach(r => {
+                    bookMap[r.roomId + (r.customerId || '')] = {start: r.startDate, end: r.endDate};
+
+                    const roomId = r.roomId || '';
+                    const roomType = r.roomType || '--';
+                    const sales = r.sales || 0;
+                    const roomStatus = r.roomStatus || '未预约';
+                    const customerId = r.customerId || '';
+
+                    let timeSlot = '';
+                    if (roomStatus !== '未预约' && r.startDate) {
+                        const startDate = fmtDate(r.startDate);
+                        const endDate = r.endDate ? fmtDate(r.endDate) : '--';
+                        timeSlot = `${startDate} ~ ${endDate}`;
+                    }
+
+                    let actions = '';
+                    if (roomStatus === '使用中' || roomStatus === '已预约') {
+                        actions = `<button class="btn btn-sm btn-warning" onclick="openModal('${roomId}','${customerId}')">修改</button> `;
+                    }
+                    actions += `<button class="btn btn-sm btn-danger" onclick="deleteRoom('${roomId}')">删除</button>`;
+
+                    h += `<tr>
+                      <td>${roomId}</td>
+                      <td>${roomType}</td>
+                      <td>${sales}</td>
+                      <td>${roomStatus}</td>
+                      <td>${timeSlot}</td>
+                      <td>${actions}</td>
+                    </tr>`;
+                });
+
+                if (rooms.length === 0) {
+                    h = '<tr><td colspan="6" class="text-center">暂无房间数据</td></tr>';
+                }
+            }
+            // 如果不是分页数据（原始接口）
+            else {
+                // 简单分页逻辑
+                totalRecords = rooms.length;
+                totalPages = Math.ceil(totalRecords / pageSize);
+                const startIndex = (currentPage - 1) * pageSize;
+                const endIndex = Math.min(startIndex + pageSize, totalRecords);
+
+                for (let i = startIndex; i < endIndex; i++) {
+                    const r = rooms[i];
+                    bookMap[r.roomId + (r.customerId || '')] = {start: r.startDate, end: r.endDate};
+
+                    const roomId = r.roomId || '';
+                    const roomType = r.roomType || '--';
+                    const sales = r.sales || 0;
+                    const roomStatus = r.roomStatus || '未预约';
+                    const customerId = r.customerId || '';
+
+                    let timeSlot = '';
+                    if (roomStatus !== '未预约' && r.startDate) {
+                        const startDate = fmtDate(r.startDate);
+                        const endDate = r.endDate ? fmtDate(r.endDate) : '--';
+                        timeSlot = `${startDate} ~ ${endDate}`;
+                    }
+
+                    let actions = '';
+                    if (roomStatus === '使用中' || roomStatus === '已预约') {
+                        actions = `<button class="btn btn-sm btn-warning" onclick="openModal('${roomId}','${customerId}')">修改</button> `;
+                    }
+                    actions += `<button class="btn btn-sm btn-danger" onclick="deleteRoom('${roomId}')">删除</button>`;
+
+                    h += `<tr>
+                      <td>${roomId}</td>
+                      <td>${roomType}</td>
+                      <td>${sales}</td>
+                      <td>${roomStatus}</td>
+                      <td>${timeSlot}</td>
+                      <td>${actions}</td>
+                    </tr>`;
+                }
+
+                if (rooms.length === 0) {
+                    h = '<tr><td colspan="6" class="text-center">暂无房间数据</td></tr>';
+                }
+            }
+
+            $('#tb').html(h);
+            renderPagination();
+            updatePageInfo();
+
+        }).catch(error => {
+            console.error('加载失败:', error);
+            $('#tb').html('<tr><td colspan="6" class="text-center text-danger">加载失败</td></tr>');
+        });
+    }
+
+    /* 渲染分页控件 */
+    function renderPagination() {
+        if (totalPages <= 1) {
+            $('#pagination').html('');
+            return;
+        }
+
+        let html = '';
+
+        // 上一页按钮
+        if (currentPage > 1) {
+            html += `<li class="page-item">
+                <a class="page-link" href="javascript:loadRooms(${currentPage - 1})">上一页</a>
+            </li>`;
+        }
+
+        // 页码按钮
+        const maxPagesToShow = 5;
+        let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+        let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+
+        if (endPage - startPage + 1 < maxPagesToShow) {
+            startPage = Math.max(1, endPage - maxPagesToShow + 1);
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            if (i === currentPage) {
+                html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+            } else {
+                html += `<li class="page-item"><a class="page-link" href="javascript:loadRooms(${i})">${i}</a></li>`;
+            }
+        }
+
+        // 下一页按钮
+        if (currentPage < totalPages) {
+            html += `<li class="page-item">
+                <a class="page-link" href="javascript:loadRooms(${currentPage + 1})">下一页</a>
+            </li>`;
+        }
+
+        $('#pagination').html(html);
+    }
+
+    /* 更新页面信息 */
+    function updatePageInfo() {
+        if (totalRecords === 0) {
+            $('#pageInfo').html('暂无数据');
+            return;
+        }
+
+        const start = (currentPage - 1) * pageSize + 1;
+        const end = Math.min(currentPage * pageSize, totalRecords);
+
+        let info = `显示第 ${start} 到 ${end} 条记录，共 ${totalRecords} 条`;
+        if (keyword) {
+            info += `（搜索: "${keyword}"）`;
+        }
+
+        $('#pageInfo').html(info);
+    }
+
+    /* 改变每页显示条数 */
+    function changePageSize() {
+        pageSize = parseInt($('#pageSizeSelect').val());
+        currentPage = 1;
+        loadRooms(currentPage);
+    }
+
+    /* 搜索房间 */
+    function searchRooms() {
+        currentPage = 1;
+        loadRooms(currentPage);
+    }
+
+    /* 新增房间 */
+    $('#addForm').submit(function (e) {
+        e.preventDefault();
+        const data = {
+            roomId: $('[name=roomId]').val().trim(),
+            roomType: $('[name=roomType]').val(),
+            roomStatus: '未预约',
+            sales: 0
+        };
+
+        axios.post('/room/add', data)
+            .then(res => {
+                if (res.data.success) {
+                    alert('添加成功！');
+                    $('#addModal').modal('hide');
+                    this.reset();
+                    loadRooms(currentPage);
+                } else {
+                    alert(res.data.message || '添加失败');
+                }
+            })
+            .catch(err => {
+                alert('添加失败: ' + (err.response?.data?.message || err.message));
+            });
+    });
+
+    function fmtDate(d) {
+        if (!d) return '--';
+        try {
+            return new Date(d).toLocaleString('zh-CN');
+        } catch (e) {
+            return '格式错误';
+        }
+    }
+
+    function openModal(roomId,customerId) {
+        $('[name=roomId]').val(roomId);
+        window.currCustomerId = customerId;
+        $('#modal').modal('show');
+    }
+
+    $(function () {
+        $('[name=roomStatus]').change(function () {
+            if ($(this).val() === '使用中'){
+                $('#timeDiv').removeClass('d-none').show();
+            }else {
+                $('#timeDiv').removeClass('d-none').hide();
+            }
+        });
+    });
+
+    function toLocalISO(dt) {
+        const Y = dt.getFullYear();
+        const M = String(dt.getMonth() + 1).padStart(2, '0');
+        const D = String(dt.getDate()).padStart(2, '0');
+        const h = String(dt.getHours()).padStart(2, '0');
+        const m = String(dt.getMinutes()).padStart(2, '0');
+        const s = String(dt.getSeconds()).padStart(2, '0');
+        return `${Y}-${M}-${D}T${h}:${m}:${s}`;
+    }
+
+    $('#saveBtn').click(function () {
+        const roomStatus = $('[name=roomStatus]').val();
+        const roomId = $('[name=roomId]').val();
+
+        if (roomStatus !== '使用中') {
+            update(roomId, roomStatus);
+            return;
+        }
+
+        const start = new Date($('[name=startTime]').val());
+        const end   = new Date($('[name=endTime]').val());
+        const book = bookMap[roomId + currCustomerId];
+
+        if (!book || !book.start) {
+            alert('该房间没有预约时段');
+            return;
+        }
+
+        const bStart = new Date(book.start);
+        const bEnd   = new Date(book.end);
+
+        if (start >= end) {
+            alert('时段非法');
+            return;
+        }
+
+        if (start < bStart || end > bEnd) {
+            alert('必须在预约时段内');
+            return;
+        }
+
+        if (start > new Date(bStart.getTime() + 30 * 60 * 1000)) {
+            alert('超时30min，无法使用');
+            return;
+        }
+
+        update(roomId, roomStatus, start, end);
+    });
+
+    function update(roomId, roomStatus, start, end) {
+        axios.post('/room/start', {
+            roomNo: roomId,
+            waiterId: loginUser.user.account,
+            startTime: start ? toLocalISO(start) : null,
+            endTime:   end   ? toLocalISO(end)   : null,
+            roomStatus:roomStatus
+        }).then((res) => {
+            if (res.data.success){
+                $('#modal').modal('hide');
+                loadRooms(currentPage);
+            }else {
+                alert(res.data.message || '修改失败');
+            }
+        })
+            .catch(err => {
+                alert('修改失败: ' + (err.response?.data?.message || err.message));
+            });
+    }
+
+    function deleteRoom(roomId) {
+        if (!confirm(`确认删除房间 ${roomId} 吗？`)) return;
+
+        axios.delete('/room/delete', { params: { roomId } })
+            .then(res => {
+                if (res.data.success) {
+                    alert('删除成功！');
+                    loadRooms(currentPage);
+                } else {
+                    alert(res.data.message || '删除失败');
+                }
+            })
+            .catch(err => {
+                alert('删除失败：' + (err.response?.data?.message || err.message));
+            });
+    }
+
+    // 页面初始化
+    $(document).ready(function() {
+        loadRooms();
+
+        // 回车搜索
+        $('#searchKeyword').on('keypress', function(e) {
+            if (e.which === 13) {
+                searchRooms();
+            }
+        });
+    });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

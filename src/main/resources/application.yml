@@ -1,0 +1,17 @@
+server:
+  port: 8080
+
+spring:
+  jackson:
+    time-zone: GMT+8
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ktv?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: 123456
+
+# 控制台打印 SQL（调试用，可删）
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+

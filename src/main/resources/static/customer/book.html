@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>预约房间</title>
+  <script src="/js/check-auth.js?role=顾客"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+  <script src="/js/common-head.js"></script>
+  <style>
+    /* 自定义表格样式 */
+    .data-table-container {
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 20px;
+      background: white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .table-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .table-search {
+      min-width: 250px;
+    }
+
+    .pagination-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 20px;
+      gap: 10px;
+    }
+
+    .page-info {
+      color: #6c757d;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+<script src="/js/nav-bar.js"></script>
+<div class="container mt-2">
+  <a href="/customer/index.html" class="btn btn-sm btn-outline-secondary">← 返回主页</a>
+</div>
+<div class="container mt-3">
+  <h4>预约 KTV 房间</h4>
+
+  <div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5>我的预约记录</h5>
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#reserveModal">
+        新建预约
+      </button>
+    </div>
+
+    <!-- 自定义表格容器 -->
+    <div class="data-table-container">
+      <!-- 表格控制栏 -->
+      <div class="table-controls">
+        <div class="d-flex align-items-center gap-2">
+          <label class="form-label mb-0">每页显示:</label>
+          <select class="form-select form-select-sm" id="pageSizeSelect" style="width: auto;">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+
+        <div class="table-search">
+          <input type="text" class="form-control form-control-sm" id="searchInput"
+                 placeholder="搜索房间号、日期或时间..." style="min-width: 250px;">
+        </div>
+      </div>
+
+      <!-- 表格主体 -->
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover" id="reservationTable">
+          <thead class="table-light">
+          <tr>
+            <th>房间号</th>
+            <th>预约日期</th>
+            <th>开始时间</th>
+            <th>结束时间</th>
+            <th>操作</th>
+          </tr>
+          </thead>
+          <tbody id="reservationList">
+          <tr>
+            <td colspan="5" class="text-center py-4">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">加载中...</span>
+              </div>
+              <p class="mt-2 text-muted">正在加载预约记录...</p>
+            </td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 分页控制 -->
+      <div class="pagination-wrapper">
+        <div class="page-info" id="pageInfo"></div>
+        <nav>
+          <ul class="pagination pagination-sm mb-0" id="pagination">
+            <!-- 分页按钮将通过JS动态生成 -->
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 模态框保持不变 -->
+<div class="modal fade" id="reserveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">新建预约</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="reserveForm">
+          <div class="mb-3">
+            <label class="form-label">选择房间</label>
+            <select class="form-select" name="roomId" required>
+              <option value="">请选择房间</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">预约日期</label>
+            <input type="date" class="form-control" name="bookDate" required />
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">开始时间</label>
+              <input type="time" class="form-control" name="startTime" required />
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">结束时间</label>
+              <input type="time" class="form-control" name="endTime" required />
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="submitBtn">提交预约</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 全局变量
+  const user = JSON.parse(sessionStorage.getItem('user') || '{}');
+
+  // 分页相关变量
+  let currentPage = 1;
+  let pageSize = 10;
+  let totalRecords = 0;
+  let totalPages = 0;
+  let allReservations = [];
+  let filteredReservations = [];
+
+  // ========== 页面初始化 ==========
+  $(document).ready(function() {
+    console.log('预约页面初始化');
+    if (user.user && user.user.account) {
+      loadAllReservations();
+      loadRooms();
+
+      // 绑定事件
+      $('#pageSizeSelect').change(function() {
+        pageSize = parseInt($(this).val());
+        currentPage = 1;
+        filterAndPaginate();
+      });
+
+      $('#searchInput').on('input', function() {
+        currentPage = 1;
+        filterAndPaginate();
+      });
+
+    } else {
+      $('#reservationList').html(`
+        <tr>
+          <td colspan="5" class="text-center py-4 text-danger">
+            <h5>请先登录</h5>
+            <a href="/login.html" class="btn btn-primary btn-sm mt-2">前往登录</a>
+          </td>
+        </tr>
+      `);
+    }
+  });
+
+  // ========== 加载所有预约记录 ==========
+  function loadAllReservations() {
+    const customerId = user.user?.account;
+    if (!customerId) return;
+
+    // 显示加载状态
+    $('#reservationList').html(`
+      <tr>
+        <td colspan="5" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">加载中...</span>
+          </div>
+          <p class="mt-2 text-muted">正在加载预约记录...</p>
+        </td>
+      </tr>
+    `);
+
+    axios.get('/room/reservations', {
+      params: {
+        customerId: customerId,
+        _t: new Date().getTime()
+      }
+    }).then(res => {
+      console.log('预约记录响应:', res.data);
+
+      if (res.data.success) {
+        allReservations = res.data.data || [];
+        console.log('获取到预约记录:', allReservations.length, '条');
+        filterAndPaginate();
+      } else {
+        showError(res.data.message || '加载失败');
+      }
+    }).catch(err => {
+      console.error('加载失败:', err);
+      showError('加载失败：' + (err.response?.data?.message || err.message));
+    });
+  }
+
+  // ========== 过滤和分页 ==========
+  function filterAndPaginate() {
+    const searchTerm = $('#searchInput').val().toLowerCase().trim();
+
+    // 过滤数据
+    if (searchTerm) {
+      filteredReservations = allReservations.filter(r => {
+        const roomId = (r.roomId || '').toString().toLowerCase();
+        const startDate = r.startTime ? r.startTime.split('T')[0] : '';
+        const startTime = r.startTime ? r.startTime.split('T')[1]?.substring(0,5) : '';
+        const endTime = r.endTime ? r.endTime.split('T')[1]?.substring(0,5) : '';
+
+        return roomId.includes(searchTerm) ||
+                startDate.includes(searchTerm) ||
+                startTime.includes(searchTerm) ||
+                endTime.includes(searchTerm);
+      });
+    } else {
+      filteredReservations = [...allReservations];
+    }
+
+    // 计算分页
+    totalRecords = filteredReservations.length;
+    totalPages = Math.ceil(totalRecords / pageSize);
+
+    // 确保当前页有效
+    if (currentPage > totalPages && totalPages > 0) {
+      currentPage = totalPages;
+    } else if (totalPages === 0) {
+      currentPage = 1;
+    }
+
+    // 获取当前页数据
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalRecords);
+    const currentPageData = filteredReservations.slice(startIndex, endIndex);
+
+    // 渲染表格
+    renderTable(currentPageData);
+
+    // 更新分页信息
+    updatePaginationInfo();
+
+    // 渲染分页按钮
+    renderPagination();
+  }
+
+  // ========== 渲染表格数据 ==========
+  function renderTable(reservations) {
+    let html = '';
+
+    if (reservations.length > 0) {
+      reservations.forEach((r, index) => {
+        const actualIndex = (currentPage - 1) * pageSize + index + 1;
+        const startDate = r.startTime ? r.startTime.split('T')[0] : '-';
+        const startTime = r.startTime ? r.startTime.split('T')[1]?.substring(0,5) : '-';
+        const endTime = r.endTime ? r.endTime.split('T')[1]?.substring(0,5) : '-';
+
+        html += `
+          <tr>
+            <td>${r.roomId || '-'}</td>
+            <td>${startDate}</td>
+            <td>${startTime}</td>
+            <td>${endTime}</td>
+            <td>
+              <button class="btn btn-sm btn-danger" onclick="cancelReservation('${r.roomId}', '${r.startTime}')">
+                取消
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+    } else {
+      html = `
+        <tr>
+          <td colspan="5" class="text-center py-4">
+            <div class="text-muted">
+              <i class="fas fa-calendar-times fa-2x mb-2"></i>
+              <p>${$('#searchInput').val() ? '没有找到匹配的预约记录' : '暂无预约记录'}</p>
+              ${$('#searchInput').val() ? '<button class="btn btn-sm btn-outline-secondary" onclick="$(\'#searchInput\').val(\'\').trigger(\'input\')">清除搜索</button>' : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    $('#reservationList').html(html);
+  }
+
+  // ========== 更新分页信息 ==========
+  function updatePaginationInfo() {
+    const startRecord = totalRecords > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+    const endRecord = Math.min(currentPage * pageSize, totalRecords);
+
+    let info = `显示 ${startRecord} 到 ${endRecord} 条，共 ${totalRecords} 条记录`;
+
+    if ($('#searchInput').val()) {
+      info += '（已过滤）';
+    }
+
+    $('#pageInfo').text(info);
+  }
+
+  // ========== 渲染分页按钮 ==========
+  function renderPagination() {
+    if (totalPages <= 1) {
+      $('#pagination').html('');
+      return;
+    }
+
+    let html = '';
+
+    // 上一页按钮
+    if (currentPage > 1) {
+      html += `
+        <li class="page-item">
+          <a class="page-link" href="javascript:void(0)" onclick="goToPage(${currentPage - 1})">
+            &laquo; 上一页
+          </a>
+        </li>
+      `;
+    } else {
+      html += `
+        <li class="page-item disabled">
+          <span class="page-link">&laquo; 上一页</span>
+        </li>
+      `;
+    }
+
+    // 页码按钮
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    // 调整起始页
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    // 第一页和省略号
+    if (startPage > 1) {
+      html += `
+        <li class="page-item">
+          <a class="page-link" href="javascript:void(0)" onclick="goToPage(1)">1</a>
+        </li>
+      `;
+      if (startPage > 2) {
+        html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+      }
+    }
+
+    // 中间页码
+    for (let i = startPage; i <= endPage; i++) {
+      if (i === currentPage) {
+        html += `
+          <li class="page-item active">
+            <span class="page-link">${i}</span>
+          </li>
+        `;
+      } else {
+        html += `
+          <li class="page-item">
+            <a class="page-link" href="javascript:void(0)" onclick="goToPage(${i})">${i}</a>
+          </li>
+        `;
+      }
+    }
+
+    // 最后一页和省略号
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+      }
+      html += `
+        <li class="page-item">
+          <a class="page-link" href="javascript:void(0)" onclick="goToPage(${totalPages})">${totalPages}</a>
+        </li>
+      `;
+    }
+
+    // 下一页按钮
+    if (currentPage < totalPages) {
+      html += `
+        <li class="page-item">
+          <a class="page-link" href="javascript:void(0)" onclick="goToPage(${currentPage + 1})">
+            下一页 &raquo;
+          </a>
+        </li>
+      `;
+    } else {
+      html += `
+        <li class="page-item disabled">
+          <span class="page-link">下一页 &raquo;</span>
+        </li>
+      `;
+    }
+
+    $('#pagination').html(html);
+  }
+
+  // ========== 跳转到指定页 ==========
+  function goToPage(page) {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    currentPage = page;
+    filterAndPaginate();
+  }
+
+  // ========== 显示错误信息 ==========
+  function showError(message) {
+    $('#reservationList').html(`
+      <tr>
+        <td colspan="5" class="text-center py-4 text-danger">
+          <h5>加载失败</h5>
+          <p>${message}</p>
+          <button class="btn btn-primary btn-sm" onclick="loadAllReservations()">重试</button>
+        </td>
+      </tr>
+    `);
+  }
+
+  // ========== 加载空闲房间 ==========
+  function loadRooms() {
+    axios.get('/room/byStatus').then(res => {
+      if (res.data.success) {
+        let options = '<option value="">请选择房间</option>';
+        res.data.data.forEach(r => {
+          options += `<option value="${r.roomId}">${r.roomId} - ${r.roomType}</option>`;
+        });
+        $('[name=roomId]').html(options);
+      }
+    }).catch(err => {
+      console.error('加载房间失败:', err);
+    });
+  }
+
+  // ========== 提交预约 ==========
+  $('#reserveForm').submit(function (e) {
+    e.preventDefault();
+  });
+
+  $('#submitBtn').click(function () {
+    const customerId = user.user?.account;
+    if (!customerId) {
+      alert('请先登录');
+      return;
+    }
+
+    const param = Object.fromEntries($('#reserveForm').serializeArray().map(i => [i.name, i.value]));
+    param.customerId = customerId;
+    param.startTime = param.bookDate + 'T' + param.startTime + ':00';
+    param.endTime   = param.bookDate + 'T' + param.endTime + ':00';
+    param.roomNo = param.roomId;
+
+    console.log('提交预约参数:', param);
+
+    // 显示加载状态
+    const originalText = $('#submitBtn').text();
+    $('#submitBtn').html('<span class="spinner-border spinner-border-sm"></span> 处理中...');
+    $('#submitBtn').prop('disabled', true);
+
+    axios.post('/room/reserve', param).then(res => {
+      // 恢复按钮状态
+      $('#submitBtn').html(originalText);
+      $('#submitBtn').prop('disabled', false);
+
+      if (res.data.success) {
+        alert('预约成功！');
+        loadAllReservations();
+        $('#reserveForm')[0].reset();
+        bootstrap.Modal.getInstance($('#reserveModal')).hide();
+      } else {
+        alert(res.data.message || '预约失败');
+      }
+    }).catch(err => {
+      // 恢复按钮状态
+      $('#submitBtn').html(originalText);
+      $('#submitBtn').prop('disabled', false);
+      alert('预约失败：' + (err.response?.data?.message || err.message));
+    });
+  });
+
+  // ========== 取消预约 ==========
+  function cancelReservation(roomNo, startTime) {
+    if (!confirm('确定要取消该预约吗？')) return;
+
+    const customerId = user.user?.account;
+    if (!customerId) return;
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    button.disabled = true;
+
+    axios.delete('/room/reserve', {
+      params: {
+        customerId: customerId,
+        roomNo: roomNo,
+        startTime: startTime
+      }
+    }).then(res => {
+      button.textContent = originalText;
+      button.disabled = false;
+
+      if (res.data.success) {
+        alert('取消预约成功！');
+        loadAllReservations();
+      } else {
+        alert(res.data.message || '取消预约失败');
+      }
+    }).catch(err => {
+      button.textContent = originalText;
+      button.disabled = false;
+      alert('取消预约失败：' + (err.response?.data?.message || err.message));
+    });
+  }
+</script>
+</body>
+</html>

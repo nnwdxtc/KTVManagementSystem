@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <title>点歌</title>
+    <script src="/js/check-auth.js?role=顾客"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+    <script src="/js/common-head.js"></script>
+    <style>
+        /* 自定义样式 */
+        .tab-content {
+            padding: 20px 0;
+        }
+
+        .table-container {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 15px;
+        }
+
+        .table-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .table-search {
+            min-width: 250px;
+        }
+
+        .pagination-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .page-info {
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        /* 热门榜特殊样式 */
+        .hot-song-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+
+        .hot-song-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .hot-song-info {
+            flex: 1;
+        }
+
+        .hot-song-title {
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .hot-song-artist {
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .hot-song-playcount {
+            margin-right: 15px;
+            color: #ff6b35;
+            font-weight: 500;
+        }
+
+        /* 我的已点特殊样式 */
+        .my-song-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+
+        .my-song-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .my-song-info {
+            flex: 1;
+        }
+
+        .my-song-title {
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .my-song-artist {
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .my-song-playcount {
+            margin-right: 15px;
+            color: #0d6efd;
+            font-weight: 500;
+        }
+
+        /* 表格通用样式 */
+        .song-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .song-table td {
+            vertical-align: middle;
+        }
+
+        .badge-count {
+            background-color: #ff6b35;
+            color: white;
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 10px;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .table-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .table-search {
+                width: 100%;
+            }
+
+            .pagination-wrapper {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .hot-song-item,
+            .my-song-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .hot-song-playcount,
+            .my-song-playcount {
+                margin-right: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+<script src="/js/nav-bar.js"></script>
+<div class="container mt-2">
+    <a href="/customer/index.html" class="btn btn-sm btn-outline-secondary">← 返回主页</a>
+</div>
+
+<div class="container mt-3">
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#hot">
+                热门榜 <span id="hotBadge" class="badge bg-warning ms-1">0</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#search">
+                搜索
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#my">
+                我的已点 <span id="myBadge" class="badge bg-info ms-1">0</span>
+            </a>
+        </li>
+    </ul>
+
+    <div class="tab-content mt-3">
+        <!-- 热门榜 -->
+        <div class="tab-pane fade show active" id="hot">
+            <div class="table-container">
+                <!-- 热门榜控制栏 -->
+                <div class="table-controls">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="form-label mb-0">每页显示:</label>
+                        <select class="form-select form-select-sm" id="hotPageSizeSelect" style="width: auto;">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                        <span class="text-muted ms-2">
+                            <i class="fas fa-fire"></i> 热门歌曲排行榜
+                        </span>
+                    </div>
+
+                    <div class="table-search">
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="hotSearchInput"
+                                   placeholder="搜索热门歌曲..." style="min-width: 200px;">
+                            <button class="btn btn-outline-secondary" type="button" onclick="clearHotSearch()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 热门榜列表 -->
+                <div id="hotSongsList">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2 text-muted">正在加载热门歌曲...</p>
+                    </div>
+                </div>
+
+                <!-- 热门榜分页 -->
+                <div class="pagination-wrapper">
+                    <div class="page-info" id="hotPageInfo"></div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="hotPagination">
+                            <!-- 分页按钮将通过JS动态生成 -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+
+        <!-- 搜索 -->
+        <div class="tab-pane fade" id="search">
+            <div class="table-container">
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="keyword" placeholder="输入歌名或歌手">
+                    <button class="btn btn-outline-secondary" id="searchBtn">
+                        <i class="fas fa-search"></i> 搜索
+                    </button>
+                </div>
+
+                <div id="searchResultsContainer">
+                    <div class="text-center py-4 text-muted">
+                        <i class="fas fa-search fa-2x mb-2"></i>
+                        <p>输入关键词搜索歌曲</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 我的已点 -->
+        <div class="tab-pane fade" id="my">
+            <div class="table-container">
+                <!-- 我的已点控制栏 -->
+                <div class="table-controls">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="form-label mb-0">每页显示:</label>
+                        <select class="form-select form-select-sm" id="myPageSizeSelect" style="width: auto;">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span class="text-muted ms-2">
+                            <i class="fas fa-heart"></i> 我的已点歌曲
+                        </span>
+                    </div>
+
+                    <div class="table-search">
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="mySearchInput"
+                                   placeholder="搜索我的已点歌曲..." style="min-width: 200px;">
+                            <button class="btn btn-outline-secondary" type="button" onclick="clearMySearch()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 我的已点列表 -->
+                <div id="mySongsList">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2 text-muted">正在加载我的已点歌曲...</p>
+                    </div>
+                </div>
+
+                <!-- 我的已点分页 -->
+                <div class="pagination-wrapper">
+                    <div class="page-info" id="myPageInfo"></div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="myPagination">
+                            <!-- 分页按钮将通过JS动态生成 -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // 全局变量
+    const user = JSON.parse(sessionStorage.getItem('user') || {});
+
+    // 热门榜分页相关变量
+    let hotCurrentPage = 1;
+    let hotPageSize = 20;
+    let hotTotalRecords = 0;
+    let hotTotalPages = 0;
+    let allHotSongs = [];
+    let filteredHotSongs = [];
+
+    // 搜索相关变量
+    let searchCurrentPage = 1;
+    let searchPageSize = 10;
+    let searchTotalRecords = 0;
+    let searchTotalPages = 0;
+    let searchResults = [];
+
+    // 我的已点分页相关变量
+    let myCurrentPage = 1;
+    let myPageSize = 10;
+    let myTotalRecords = 0;
+    let myTotalPages = 0;
+    let allMySongs = [];
+    let filteredMySongs = [];
+
+    // ========== 页面初始化 ==========
+    $(document).ready(function() {
+        if (user.user && user.user.account) {
+            // 加载热门榜
+            loadAllHotSongs();
+
+            // 加载我的已点
+            loadAllMySongs();
+
+            // 绑定热门榜事件
+            $('#hotPageSizeSelect').change(function() {
+                hotPageSize = parseInt($(this).val());
+                hotCurrentPage = 1;
+                filterAndPaginateHotSongs();
+            });
+
+            $('#hotSearchInput').on('input', function() {
+                hotCurrentPage = 1;
+                filterAndPaginateHotSongs();
+            });
+
+            // 绑定我的已点事件
+            $('#myPageSizeSelect').change(function() {
+                myPageSize = parseInt($(this).val());
+                myCurrentPage = 1;
+                filterAndPaginateMySongs();
+            });
+
+            $('#mySearchInput').on('input', function() {
+                myCurrentPage = 1;
+                filterAndPaginateMySongs();
+            });
+
+            // 绑定搜索事件
+            $('#searchBtn').click(function() {
+                performSearch();
+            });
+
+            $('#keyword').keypress(function(e) {
+                if (e.which === 13) {
+                    performSearch();
+                }
+            });
+
+            // 监听tab切换
+            $('a[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
+                const target = $(e.target).attr("href");
+                if (target === '#hot') {
+                    // 切换到热门榜时刷新
+                    filterAndPaginateHotSongs();
+                } else if (target === '#my') {
+                    // 切换到我的已点时刷新
+                    filterAndPaginateMySongs();
+                }
+            });
+
+        } else {
+            showNotLoggedIn();
+        }
+    });
+
+    // ========== 热门榜相关函数 ==========
+    function loadAllHotSongs() {
+        axios.get('/song/hot?limit=500').then(res => {
+            console.log('热门歌曲响应:', res.data);
+            if (res.data.success && res.data.data) {
+                allHotSongs = res.data.data;
+                console.log('获取到热门歌曲:', allHotSongs.length, '首');
+
+                // 更新徽章
+                $('#hotBadge').text(allHotSongs.length);
+
+                // 初始过滤和分页
+                filterAndPaginateHotSongs();
+            } else {
+                showHotError(res.data.message || '加载热门歌曲失败');
+            }
+        }).catch(err => {
+            console.error('加载热门歌曲失败:', err);
+            showHotError('加载热门歌曲失败：' + (err.response?.data?.message || err.message));
+        });
+    }
+
+    function filterAndPaginateHotSongs() {
+        const searchTerm = $('#hotSearchInput').val().toLowerCase().trim();
+
+        // 过滤数据
+        if (searchTerm) {
+            filteredHotSongs = allHotSongs.filter(song => {
+                const title = (song.title || song.songName || '').toLowerCase();
+                const artist = (song.artist || song.singer || '').toLowerCase();
+                return title.includes(searchTerm) || artist.includes(searchTerm);
+            });
+        } else {
+            filteredHotSongs = [...allHotSongs];
+        }
+
+        // 按播放次数排序（确保热门程度）
+        filteredHotSongs.sort((a, b) => {
+            const playCountA = a.playCount || 0;
+            const playCountB = b.playCount || 0;
+            return playCountB - playCountA;
+        });
+
+        // 计算分页
+        hotTotalRecords = filteredHotSongs.length;
+        hotTotalPages = Math.ceil(hotTotalRecords / hotPageSize);
+
+        // 确保当前页有效
+        if (hotCurrentPage > hotTotalPages && hotTotalPages > 0) {
+            hotCurrentPage = hotTotalPages;
+        } else if (hotTotalPages === 0) {
+            hotCurrentPage = 1;
+        }
+
+        // 获取当前页数据
+        const startIndex = (hotCurrentPage - 1) * hotPageSize;
+        const endIndex = Math.min(startIndex + hotPageSize, hotTotalRecords);
+        const currentPageData = filteredHotSongs.slice(startIndex, endIndex);
+
+        // 渲染热门榜
+        renderHotSongs(currentPageData);
+
+        // 更新分页信息
+        updateHotPaginationInfo();
+
+        // 渲染分页按钮
+        renderHotPagination();
+    }
+
+    function renderHotSongs(songs) {
+        let html = '';
+
+        if (songs.length > 0) {
+            songs.forEach((song, index) => {
+                const globalIndex = (hotCurrentPage - 1) * hotPageSize + index + 1;
+                const title = song.title || song.songName || '未知歌曲';
+                const artist = song.artist || song.singer || '未知歌手';
+                const playCount = song.playCount || 0;
+                const songId = song.songId || song.id;
+
+                html += `
+                    <div class="hot-song-item">
+                        <div class="hot-song-info">
+                            <div class="hot-song-title">
+                                <span class="text-primary me-2">${globalIndex}.</span>
+                                ${title}
+                            </div>
+                            <div class="hot-song-artist">${artist}</div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <span class="hot-song-playcount" title="播放次数">
+                                <i class="fas fa-play-circle me-1"></i>${playCount}
+                            </span>
+                            <button class="btn btn-sm btn-success" onclick="orderSong(${songId})" title="点歌">
+                                <i class="fas fa-plus"></i> 点歌
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            html = `
+                <div class="text-center py-5">
+                    <div class="text-muted">
+                        <i class="fas fa-music fa-3x mb-3"></i>
+                        <h5>${$('#hotSearchInput').val() ? '没有找到匹配的歌曲' : '暂无热门歌曲'}</h5>
+                        ${$('#hotSearchInput').val() ?
+                '<p>尝试其他关键词或清除搜索条件</p>' :
+                '<p>热门歌曲加载中或暂无数据</p>'}
+                    </div>
+                </div>
+            `;
+        }
+
+        $('#hotSongsList').html(html);
+    }
+
+    function updateHotPaginationInfo() {
+        const startRecord = hotTotalRecords > 0 ? (hotCurrentPage - 1) * hotPageSize + 1 : 0;
+        const endRecord = Math.min(hotCurrentPage * hotPageSize, hotTotalRecords);
+
+        let info = `显示 ${startRecord} 到 ${endRecord} 条，共 ${hotTotalRecords} 首歌曲`;
+
+        if ($('#hotSearchInput').val()) {
+            info += '（已过滤）';
+        }
+
+        $('#hotPageInfo').text(info);
+    }
+
+    function renderHotPagination() {
+        if (hotTotalPages <= 1) {
+            $('#hotPagination').html('');
+            return;
+        }
+
+        let html = '';
+
+        // 上一页按钮
+        if (hotCurrentPage > 1) {
+            html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToHotPage(${hotCurrentPage - 1})">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+                </li>
+            `;
+        } else {
+            html += `
+                <li class="page-item disabled">
+                    <span class="page-link"><i class="fas fa-chevron-left"></i></span>
+                </li>
+            `;
+        }
+
+        // 页码按钮 - 简化版本，只显示当前页和前后各1页
+        const maxVisiblePages = 3;
+        let startPage = Math.max(1, hotCurrentPage - 1);
+        let endPage = Math.min(hotTotalPages, startPage + maxVisiblePages - 1);
+
+        // 调整起始页
+        if (endPage - startPage + 1 < maxVisiblePages) {
+            startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        }
+
+        // 第一页和省略号
+        if (startPage > 1) {
+            html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToHotPage(1)">1</a>
+                </li>
+            `;
+            if (startPage > 2) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+        }
+
+        // 中间页码
+        for (let i = startPage; i <= endPage; i++) {
+            if (i === hotCurrentPage) {
+                html += `
+                    <li class="page-item active">
+                        <span class="page-link">${i}</span>
+                    </li>
+                `;
+            } else {
+                html += `
+                    <li class="page-item">
+                        <a class="page-link" href="javascript:void(0)" onclick="goToHotPage(${i})">${i}</a>
+                    </li>
+                `;
+            }
+        }
+
+        // 最后一页和省略号
+        if (endPage < hotTotalPages) {
+            if (endPage < hotTotalPages - 1) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+            html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToHotPage(${hotTotalPages})">${hotTotalPages}</a>
+                </li>
+            `;
+        }
+
+        // 下一页按钮
+        if (hotCurrentPage < hotTotalPages) {
+            html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToHotPage(${hotCurrentPage + 1})">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                </li>
+            `;
+        } else {
+            html += `
+                <li class="page-item disabled">
+                    <span class="page-link"><i class="fas fa-chevron-right"></i></span>
+                </li>
+            `;
+        }
+
+        $('#hotPagination').html(html);
+    }
+
+    function goToHotPage(page) {
+        if (page < 1 || page > hotTotalPages || page === hotCurrentPage) return;
+        hotCurrentPage = page;
+        filterAndPaginateHotSongs();
+
+        // 滚动到顶部
+        $('#hotSongsList').get(0).scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function clearHotSearch() {
+        $('#hotSearchInput').val('');
+        hotCurrentPage = 1;
+        filterAndPaginateHotSongs();
+    }
+
+    function showHotError(message) {
+        $('#hotSongsList').html(`
+            <div class="text-center py-5">
+                <div class="alert alert-danger">
+                    <h5>加载失败</h5>
+                    <p>${message}</p>
+                    <button class="btn btn-primary btn-sm" onclick="loadAllHotSongs()">
+                        <i class="fas fa-sync-alt"></i> 重试
+                    </button>
+                </div>
+            </div>
+        `);
+    }
+
+    // ========== 搜索相关函数 ==========
+    function performSearch() {
+        const keyword = $('#keyword').val().trim();
+        if (!keyword) {
+            $('#searchResultsContainer').html(`
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>请输入搜索关键词
+                </div>
+            `);
+            return;
+        }
+
+        // 显示加载状态
+        $('#searchResultsContainer').html(`
+            <div class="text-center py-4">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">搜索中...</span>
+                </div>
+                <p class="mt-2 text-muted">正在搜索 "${keyword}" ...</p>
+            </div>
+        `);
+
+        axios.get('/song/search?keyword=' + encodeURIComponent(keyword)).then(res => {
+            console.log('搜索结果:', res.data);
+            if (res.data.success && res.data.data) {
+                searchResults = res.data.data;
+                searchCurrentPage = 1;
+                renderSearchResults();
+            } else {
+                $('#searchResultsContainer').html(`
+                    <div class="alert alert-warning">
+                        <i class="fas fa-search me-2"></i>没有找到匹配的歌曲
+                    </div>
+                `);
+            }
+        }).catch(err => {
+            console.error('搜索失败:', err);
+            $('#searchResultsContainer').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>搜索失败：${err.response?.data?.message || err.message}
+                </div>
+            `);
+        });
+    }
+
+    function renderSearchResults() {
+        if (searchResults.length === 0) {
+            $('#searchResultsContainer').html(`
+                <div class="alert alert-warning">
+                    <i class="fas fa-search me-2"></i>没有找到匹配的歌曲
+                </div>
+            `);
+            return;
+        }
+
+        // 计算分页
+        searchTotalRecords = searchResults.length;
+        searchTotalPages = Math.ceil(searchTotalRecords / searchPageSize);
+
+        // 获取当前页数据
+        const startIndex = (searchCurrentPage - 1) * searchPageSize;
+        const endIndex = Math.min(startIndex + searchPageSize, searchTotalRecords);
+        const currentPageData = searchResults.slice(startIndex, endIndex);
+
+        // 渲染表格
+        let tableHtml = `
+            <div class="table-responsive">
+                <table class="table table-hover song-table">
+                    <thead>
+                        <tr>
+                            <th>歌曲</th>
+                            <th>歌手</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        currentPageData.forEach(song => {
+            const title = song.title || song.songName || '未知歌曲';
+            const artist = song.artist || song.singer || '未知歌手';
+            const songId = song.songId || song.id;
+
+            tableHtml += `
+                <tr>
+                    <td>${title}</td>
+                    <td>${artist}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="orderSong(${songId})">
+                            <i class="fas fa-plus"></i> 点歌
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tableHtml += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        // 分页控件
+        let paginationHtml = '';
+        if (searchTotalPages > 1) {
+            paginationHtml = `
+                <div class="pagination-wrapper mt-3">
+                    <div class="page-info">
+                        显示 ${startIndex + 1} 到 ${endIndex} 条，共 ${searchTotalRecords} 条结果
+                    </div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0">
+            `;
+
+            // 上一页
+            if (searchCurrentPage > 1) {
+                paginationHtml += `
+                    <li class="page-item">
+                        <a class="page-link" href="javascript:void(0)" onclick="goToSearchPage(${searchCurrentPage - 1})">
+                            <i class="fas fa-chevron-left"></i>
+                        </a>
+                    </li>
+                `;
+            }
+
+            // 页码
+            for (let i = 1; i <= searchTotalPages; i++) {
+                if (i === searchCurrentPage) {
+                    paginationHtml += `
+                        <li class="page-item active">
+                            <span class="page-link">${i}</span>
+                        </li>
+                    `;
+                } else {
+                    paginationHtml += `
+                        <li class="page-item">
+                            <a class="page-link" href="javascript:void(0)" onclick="goToSearchPage(${i})">${i}</a>
+                        </li>
+                    `;
+                }
+            }
+
+            // 下一页
+            if (searchCurrentPage < searchTotalPages) {
+                paginationHtml += `
+                    <li class="page-item">
+                        <a class="page-link" href="javascript:void(0)" onclick="goToSearchPage(${searchCurrentPage + 1})">
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </li>
+                `;
+            }
+
+            paginationHtml += `
+                        </ul>
+                    </nav>
+                </div>
+            `;
+        } else {
+            paginationHtml = `
+                <div class="pagination-wrapper mt-3">
+                    <div class="page-info">
+                        共找到 ${searchTotalRecords} 条结果
+                    </div>
+                </div>
+            `;
+        }
+
+        $('#searchResultsContainer').html(tableHtml + paginationHtml);
+    }
+
+    function goToSearchPage(page) {
+        if (page < 1 || page > searchTotalPages || page === searchCurrentPage) return;
+        searchCurrentPage = page;
+        renderSearchResults();
+    }
+
+    // ========== 我的已点相关函数 ==========
+    function loadAllMySongs() {
+        if (!user.user?.account) return;
+
+        // 显示加载状态
+        $('#mySongsList').html(`
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2 text-muted">正在加载我的已点歌曲...</p>
+            </div>
+        `);
+
+        axios.get('/song/my?customerId=' + user.user.account).then(res => {
+            console.log('我的已点响应:', res.data);
+            if (res.data.success && res.data.data) {
+                allMySongs = res.data.data;
+                console.log('获取到我的已点歌曲:', allMySongs.length, '首');
+
+                // 更新徽章
+                $('#myBadge').text(allMySongs.length);
+
+                // 初始过滤和分页
+                filterAndPaginateMySongs();
+            } else {
+                showMyError(res.data.message || '加载我的已点歌曲失败');
+            }
+        }).catch(err => {
+            console.error('加载我的已点失败:', err);
+            showMyError('加载失败：' + (err.response?.data?.message || err.message));
+        });
+    }
+
+    function filterAndPaginateMySongs() {
+        const searchTerm = $('#mySearchInput').val().toLowerCase().trim();
+
+        // 过滤数据
+        if (searchTerm) {
+            filteredMySongs = allMySongs.filter(song => {
+                const title = (song.songName || '').toLowerCase();
+                const artist = (song.singer || '').toLowerCase();
+                return title.includes(searchTerm) || artist.includes(searchTerm);
+            });
+        } else {
+            filteredMySongs = [...allMySongs];
+        }
+
+        // 按点歌时间排序（假设有点歌时间字段，如果没有就按原始顺序）
+        // 如果有orderTime字段可以按时间排序：filteredMySongs.sort((a, b) => new Date(b.orderTime) - new Date(a.orderTime));
+
+        // 计算分页
+        myTotalRecords = filteredMySongs.length;
+        myTotalPages = Math.ceil(myTotalRecords / myPageSize);
+
+        // 确保当前页有效
+        if (myCurrentPage > myTotalPages && myTotalPages > 0) {
+            myCurrentPage = myTotalPages;
+        } else if (myTotalPages === 0) {
+            myCurrentPage = 1;
+        }
+
+        // 获取当前页数据
+        const startIndex = (myCurrentPage - 1) * myPageSize;
+        const endIndex = Math.min(startIndex + myPageSize, myTotalRecords);
+        const currentPageData = filteredMySongs.slice(startIndex, endIndex);
+
+        // 渲染我的已点
+        renderMySongs(currentPageData);
+
+        // 更新分页信息
+        updateMyPaginationInfo();
+
+        // 渲染分页按钮
+        renderMyPagination();
+    }
+
+    function renderMySongs(songs) {
+        let html = '';
+
+        if (songs.length > 0) {
+            songs.forEach((song, index) => {
+                const globalIndex = (myCurrentPage - 1) * myPageSize + index + 1;
+                const title = song.songName || '未知歌曲';
+                const artist = song.singer || '未知歌手';
+                const playCount = song.playCount || 0;
+                const songId = song.songId;
+                const customerId = user.user.account;
+
+                html += `
+                    <div class="my-song-item">
+                        <div class="my-song-info">
+                            <div class="my-song-title">
+                                <span class="text-info me-2">${globalIndex}.</span>
+                                ${title}
+                            </div>
+                            <div class="my-song-artist">${artist}</div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            ${playCount > 0 ? `
+                                <span class="my-song-playcount" title="播放次数">
+                                    <i class="fas fa-play-circle me-1"></i>${playCount}
+                                </span>
+                            ` : ''}
+                            <button class="btn btn-sm btn-danger" onclick="removeSong('${customerId}', ${songId})" title="删除">
+                                <i class="fas fa-trash"></i> 删除
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            html = `
+                <div class="text-center py-5">
+                    <div class="text-muted">
+                        <i class="fas fa-heart fa-3x mb-3"></i>
+                        <h5>${$('#mySearchInput').val() ? '没有找到匹配的歌曲' : '暂无已点歌曲'}</h5>
+                        ${$('#mySearchInput').val() ?
+                '<p>尝试其他关键词或清除搜索条件</p>' :
+                '<p>快去热门榜或搜索中点歌吧！</p>'}
+                    </div>
+                </div>
+            `;
+        }
+
+        $('#mySongsList').html(html);
+    }
+
+    function updateMyPaginationInfo() {
+        const startRecord = myTotalRecords > 0 ? (myCurrentPage - 1) * myPageSize + 1 : 0;
+        const endRecord = Math.min(myCurrentPage * myPageSize, myTotalRecords);
+
+        let info = `显示 ${startRecord} 到 ${endRecord} 条，共 ${myTotalRecords} 首歌曲`;
+
+        if ($('#mySearchInput').val()) {
+            info += '（已过滤）';
+        }
+
+        $('#myPageInfo').text(info);
+    }
+
+    function renderMyPagination() {
+        if (myTotalPages <= 1) {
+            $('#myPagination').html('');
+            return;
+        }
+
+        let html = '';
+
+        // 上一页按钮
+        if (myCurrentPage > 1) {
+            html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToMyPage(${myCurrentPage - 1})">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+                </li>
+            `;
+        } else {
+            html += `
+                <li class="page-item disabled">
+                    <span class="page-link"><i class="fas fa-chevron-left"></i></span>
+                </li>
+            `;
+        }
+
+        // 页码按钮 - 简化版本，只显示当前页和前后各1页
+        const maxVisiblePages = 3;
+        let startPage = Math.max(1, myCurrentPage - 1);
+        let endPage = Math.min(myTotalPages, startPage + maxVisiblePages - 1);
+
+        // 调整起始页
+        if (endPage - startPage + 1 < maxVisiblePages) {
+            startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        }
+
+        // 第一页和省略号
+        if (startPage > 1) {
+            html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToMyPage(1)">1</a>
+                </li>
+            `;
+            if (startPage > 2) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+        }
+
+        // 中间页码
+        for (let i = startPage; i <= endPage; i++) {
+            if (i === myCurrentPage) {
+                html += `
+                    <li class="page-item active">
+                        <span class="page-link">${i}</span>
+                    </li>
+                `;
+            } else {
+                html += `
+                    <li class="page-item">
+                        <a class="page-link" href="javascript:void(0)" onclick="goToMyPage(${i})">${i}</a>
+                    </li>
+                `;
+            }
+        }
+
+        // 最后一页和省略号
+        if (endPage < myTotalPages) {
+            if (endPage < myTotalPages - 1) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+            html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToMyPage(${myTotalPages})">${myTotalPages}</a>
+                </li>
+            `;
+        }
+
+        // 下一页按钮
+        if (myCurrentPage < myTotalPages) {
+            html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToMyPage(${myCurrentPage + 1})">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                </li>
+            `;
+        } else {
+            html += `
+                <li class="page-item disabled">
+                    <span class="page-link"><i class="fas fa-chevron-right"></i></span>
+                </li>
+            `;
+        }
+
+        $('#myPagination').html(html);
+    }
+
+    function goToMyPage(page) {
+        if (page < 1 || page > myTotalPages || page === myCurrentPage) return;
+        myCurrentPage = page;
+        filterAndPaginateMySongs();
+
+        // 滚动到顶部
+        $('#mySongsList').get(0).scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function clearMySearch() {
+        $('#mySearchInput').val('');
+        myCurrentPage = 1;
+        filterAndPaginateMySongs();
+    }
+
+    function showMyError(message) {
+        $('#mySongsList').html(`
+            <div class="text-center py-5">
+                <div class="alert alert-danger">
+                    <h5>加载失败</h5>
+                    <p>${message}</p>
+                    <button class="btn btn-primary btn-sm" onclick="loadAllMySongs()">
+                        <i class="fas fa-sync-alt"></i> 重试
+                    </button>
+                </div>
+            </div>
+        `);
+    }
+
+    // ========== 点歌和删除函数 ==========
+    function orderSong(songId) {
+        if (!user.user?.account) {
+            alert('请先登录');
+            return;
+        }
+
+        // 显示确认对话框
+        if (!confirm('确定要点这首歌吗？')) return;
+
+        // 显示加载状态
+        const button = event.target.closest('button');
+        const originalHtml = button.innerHTML;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        button.disabled = true;
+
+        axios.post('/song/order?customerId=' + user.user.account + '&songId=' + songId)
+            .then(res => {
+                // 恢复按钮状态
+                button.innerHTML = originalHtml;
+                button.disabled = false;
+
+                if (res.data.success) {
+                    alert('点歌成功！');
+
+                    // 刷新我的已点
+                    loadAllMySongs();
+
+                    // 如果当前在热门榜，刷新热门榜（播放次数可能更新）
+                    if ($('#hot').hasClass('active')) {
+                        loadAllHotSongs();
+                    }
+
+                } else {
+                    alert(res.data.message || '点歌失败');
+                }
+            })
+            .catch(err => {
+                // 恢复按钮状态
+                button.innerHTML = originalHtml;
+                button.disabled = false;
+                alert('点歌失败：' + (err.response?.data?.message || '网络错误'));
+            });
+    }
+
+    function removeSong(customerId, songId) {
+        if (!confirm('确定要删除这首歌吗？')) return;
+
+        // 显示加载状态
+        const button = event.target.closest('button');
+        const originalHtml = button.innerHTML;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        button.disabled = true;
+
+        axios.delete('/song/order?customerId=' + customerId + '&songId=' + songId)
+            .then(res => {
+                // 恢复按钮状态
+                button.innerHTML = originalHtml;
+                button.disabled = false;
+
+                if (res.data.success) {
+                    alert('删除成功！');
+                    loadAllMySongs();
+                } else {
+                    alert(res.data.message || '删除失败');
+                }
+            })
+            .catch(err => {
+                // 恢复按钮状态
+                button.innerHTML = originalHtml;
+                button.disabled = false;
+                alert('删除失败：' + (err.response?.data?.message || '网络错误'));
+            });
+    }
+
+    // ========== 其他辅助函数 ==========
+    function showNotLoggedIn() {
+        const html = `
+            <div class="alert alert-danger">
+                <h5>请先登录</h5>
+                <p>您需要登录后才能使用点歌功能。</p>
+                <a href="/login.html" class="btn btn-primary">前往登录</a>
+            </div>
+        `;
+
+        $('#hot').html(html);
+        $('#search').html(html);
+        $('#my').html(html);
+    }
+</script>
+</body>
+</html>
