@@ -64,25 +64,27 @@ public class ReservationService {
             throw new BizException("预约失败");
         }
     }
+
     public boolean saveReservation(Reservation r) {
         return reservationDAO.update(r);   // 只允许改时段
     }
+
     public boolean deleteReservation(String account, String roomId) {
         return reservationDAO.delete(account, roomId);
     }
+
     public boolean deleteBatchReservation(List<String> accounts, List<String> roomIds) {
         return reservationDAO.deleteBatch(accounts, roomIds);
     }
+
     public List<Reservation> listByRoom(String roomNo) {
         return reservationDAO.selectByRoom(roomNo);
     }
 
     /**
-     * 通过存储过程查询顾客预约记录
+     * 查询顾客预约记录
      */
     public List<Reservation> listByCustomer(String customerId) {
-        return reservationDAO.selectByCustomerStoredProcedure(customerId);
+        return reservationDAO.selectByCustomer(customerId);
     }
-
-
 }

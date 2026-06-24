@@ -50,7 +50,9 @@ public class SongDAO extends BaseDAO {
 
 
     public List<Song> getHotSongs() {
-        String sql = "CALL sp_获取热门歌曲排行榜()";
+        String sql = "SELECT 歌曲编号, 歌名, 歌手, 总点播次数 AS playCount " +
+                "FROM vw_歌曲点播统计 " +
+                "ORDER BY 总点播次数 DESC, 歌曲编号";
         return queryForList(sql, new HotRowMapper());
     }
 
