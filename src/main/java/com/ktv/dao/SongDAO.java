@@ -74,12 +74,6 @@ public class SongDAO extends BaseDAO {
         return p;
     }
 
-    public boolean deleteBatchIds(List<Integer> ids) {
-        if (ids.isEmpty()) return true;
-        String placeholders = ids.stream().map(i -> "?").collect(Collectors.joining(","));
-        String sql = "DELETE FROM 歌曲 WHERE 歌曲编号 IN (" + placeholders + ")";
-        return executeUpdate(sql, ids.toArray()) > 0;
-    }
 
     private static class RowMapperImpl implements RowMapper<Song> {
         public Song mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {

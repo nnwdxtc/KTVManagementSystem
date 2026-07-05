@@ -1,90 +1,124 @@
 package com.ktv.service;
 
-import com.ktv.dao.CustomerDAO;
+import com.ktv.common.Constants;
 import com.ktv.dao.KTVRoomDAO;
 import com.ktv.dao.ReservationDAO;
-import com.ktv.entity.Customer;
 import com.ktv.entity.KTVRoom;
 import com.ktv.entity.Reservation;
 import com.ktv.exception.BizException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 public class ReservationService {
 
-    @Resource
+    @Autowired
     private ReservationDAO reservationDAO;
 
-    @Resource
+    @Autowired
     private KTVRoomDAO roomDAO;
 
-    @Resource
-    private CustomerDAO customerDAO;
+    /**
+     * 创建预约（顾客操作）
+     * 规则：只能将房间从"未预约"状态变为"已预约"状态
+     */
+    public boolean createReservation(String customerId, String roomNo, String startTime, String endTime) {
+        try {
+            LocalDateTime start = LocalDateTime.parse(startTime);
+            LocalDateTime end = LocalDateTime.parse(endTime);
 
-    public void createReservation(String customerId, String roomNo,
-                                  LocalDateTime start, LocalDateTime end) {
-
-        /* 1. 基本时间轴合理性（只跟自己比） */
-        if (end.isBefore(start)) {
-            throw new BizException("结束时间必须晚于开始时间");
-        }
-
-        /* 2. 同一顾客、同一房间，自己不能跟自己冲突 */
-        List<Reservation> myList = reservationDAO.selectByCustomerAndRoom(customerId, roomNo);
-        for (Reservation old : myList) {
-            // 新旧时段是否重叠
-            boolean overlap = !(end.isEqual(old.getStartTime()) || end.isBefore(old.getStartTime())
-                    || start.isEqual(old.getEndTime()) || start.isAfter(old.getEndTime()));
-            if (overlap) {
-                throw new BizException("您在该房间已存在重叠的预约时段");
+            // 检查房间状态是否为"未预约"
+            KTVRoom room = roomDAO.getRoomByNo(roomNo);
+            if (room == null) {
+                throw new BizException("房间不存在");
             }
+            if (!Constants.ROOM_STATUS_UNRESERVED.equals(room.getRoomStatus())) {
+                throw new BizException("房间当前状态不支持预约");
+            }
+
+            // 创建预约记录
+            Reservation reservation = new Reservation();
+            reservation.setAccount(customerId);
+            reservation.setRoomId(roomNo);
+            reservation.setStartTime(start);
+            reservation.setEndTime(end);
+
+            // 检查时间段是否已被预约
+            if (reservationDAO.isRoomBooked(roomNo, start, end)) {
+                throw new BizException("该时段已被预约");
+            }
+
+            // 插入预约记录
+            boolean success = reservationDAO.insert(reservation);
+            if (!success) {
+                throw new BizException("预约失败");
+            }
+
+            // 更新房间状态为"已预约"
+            room.setRoomStatus(Constants.ROOM_STATUS_RESERVED);
+            roomDAO.updateRoom(room);
+
+            return true;
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
         }
-
-        /* 4. 跟别人冲突检测（全局视角） */
-        if (reservationDAO.hasConflict(roomNo, start, end)) {
-            throw new BizException("该时段已被其他顾客预约");
-        }
-
-        /* 5. 顾客存在 */
-        if (customerDAO.getCustomerById(customerId) == null) {
-            throw new BizException("顾客不存在");
-        }
-
-        /* 6. 落库 */
-        Reservation r = new Reservation();
-        r.setAccount(customerId);
-        r.setRoomId(roomNo);
-        r.setStartTime(start);
-        r.setEndTime(end);
-        if (!reservationDAO.insert(r)) {
-            throw new BizException("预约失败");
-        }
-    }
-
-    public boolean saveReservation(Reservation r) {
-        return reservationDAO.update(r);   // 只允许改时段
-    }
-
-    public boolean deleteReservation(String account, String roomId) {
-        return reservationDAO.delete(account, roomId);
-    }
-
-    public boolean deleteBatchReservation(List<String> accounts, List<String> roomIds) {
-        return reservationDAO.deleteBatch(accounts, roomIds);
-    }
-
-    public List<Reservation> listByRoom(String roomNo) {
-        return reservationDAO.selectByRoom(roomNo);
     }
 
     /**
-     * 查询顾客预约记录
+     * ✅ 保存预约（直接使用 Reservation 对象）
+     */
+    public boolean saveReservation(Reservation reservation) {
+        try {
+            return reservationDAO.insert(reservation);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * 通过顾客ID和房间号删除预约
+     */
+    public void deleteReservation(String customerId, String roomNo) {
+        reservationDAO.deleteByCustomerAndRoom(customerId, roomNo);
+    }
+
+    /**
+     * 通过预约单ID删除预约
+     */
+    public boolean deleteReservationById(int reservationId) {
+        try {
+            return reservationDAO.deleteById(reservationId);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * 查询顾客的预约列表
      */
     public List<Reservation> listByCustomer(String customerId) {
-        return reservationDAO.selectByCustomer(customerId);
+        return reservationDAO.listByCustomer(customerId);
+    }
+
+    /**
+     * 获取所有预约记录（服务员用）
+     */
+    public List<Reservation> listAll() {
+        return reservationDAO.getAllReservations();
+    }
+
+    /**
+     * 通过房间号获取预约记录
+     */
+    public List<Reservation> listByRoomId(String roomId) {
+        return reservationDAO.getByRoomId(roomId);
     }
 }

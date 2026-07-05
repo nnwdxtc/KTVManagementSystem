@@ -6,12 +6,13 @@ import com.ktv.dto.LoginDTO;
 import com.ktv.dto.RegisterDTO;
 import com.ktv.entity.UserLogin;
 import com.ktv.service.AuthService;
-
 import com.ktv.dao.UserLoginDAO;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpSession;
+import javax.validation.Valid;
 import java.util.List;
 import java.util.Map;
 
@@ -25,7 +26,7 @@ public class AuthController {
     private UserLoginDAO userLoginDAO;
 
     @PostMapping("/login")
-    public R<Map<String,Object>> login(@RequestBody LoginDTO dto,
+    public R<Map<String,Object>> login(@Valid @RequestBody LoginDTO dto,
                                        HttpSession session) {
         // 调用修改后的login方法，传入验证码参数
         Map<String,Object> map = authService.login(
@@ -43,7 +44,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public R<Void> register(@RequestBody RegisterDTO dto) {
+    public R<Void> register(@Valid @RequestBody RegisterDTO dto) {
         Map<String,Object> map = authService.register(
                 dto.getAccount(), dto.getPassword(), dto.getRole(),
                 dto.getName(), dto.getPhone(), dto.getGender());
@@ -51,7 +52,7 @@ public class AuthController {
     }
 
     @PostMapping("/changePwd")
-    public R<Void> changePwd(@RequestBody ChangePwdDTO dto) {
+    public R<Void> changePwd(@Valid @RequestBody ChangePwdDTO dto) {
         boolean ok = authService.changePassword(dto.getAccount(), dto.getOldPwd(), dto.getNewPwd());
         return ok ? R.ok(null) : R.fail("原密码错误或格式不符");
     }
@@ -68,7 +69,7 @@ public class AuthController {
     }
 
     @DeleteMapping("/manage/{ids}")
-    public R<Void> deleteUser(@PathVariable List<String> ids){
+    public R<Void> deleteUser(@PathVariable("ids") List<String> ids){
         authService.deleteBatchUser(ids);
         return R.ok(null);
     }

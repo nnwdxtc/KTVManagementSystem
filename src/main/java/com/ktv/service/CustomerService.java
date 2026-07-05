@@ -1,4 +1,5 @@
 package com.ktv.service;
+
 import com.ktv.dao.CustomerDAO;
 import com.ktv.entity.Customer;
 import com.ktv.exception.BizException;
@@ -24,6 +25,13 @@ public class CustomerService {
         return dao.getCustomerById(customerId);
     }
 
+    /**
+     * ✅ 通过账号获取顾客
+     */
+    public Customer getByAccount(String account) {
+        return dao.getCustomerById(account);
+    }
+
     public boolean updatePhone(String customerId, String newPhone) {
         Customer c = dao.getCustomerById(customerId);
         if (c == null) throw new BizException("Customer not found");
@@ -34,12 +42,13 @@ public class CustomerService {
     private boolean validate(Customer c) {
         if (c == null || c.getAccount() == null || c.getName() == null) return false;
         // 只认中文
-        if (!"男".equals(c.getGender()) && !"女".equals(c.getGender()))
+        if (!"男".equals(c.getGender()) && !"女".equals(c.getGender())) {
+            c.setGender("男");
+        }
         if (c.getPhone() != null && !c.getPhone().matches("^1[3-9]\\d{9}$"))
             throw new BizException("Invalid phone");
         return true;
     }
-
 
     /* 新增 or 修改（主键存在即改） */
     public boolean saveCustomer(Customer c) {
@@ -47,10 +56,12 @@ public class CustomerService {
                 ? dao.addCustomer(c)
                 : dao.updateCustomer(c);
     }
+
     /* 单删 */
     public boolean deleteCustomer(String account) {
         return dao.deleteCustomer(account);
     }
+
     /* 批删 */
     public boolean deleteBatchCustomer(List<String> ids) {
         if (ids.isEmpty()) return true;

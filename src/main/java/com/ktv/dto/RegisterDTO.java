@@ -1,11 +1,28 @@
 package com.ktv.dto;
 
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Pattern;
+import javax.validation.constraints.Size;
+
 public class RegisterDTO {
+    @NotBlank(message = "账号不能为空")
+    @Pattern(regexp = "^[a-zA-Z0-9_]{4,20}$", message = "账号格式错误，4-20位字母数字下划线")
     private String account;
+
+    @NotBlank(message = "密码不能为空")
+    @Size(min = 6, max = 50, message = "密码长度6-50位")
     private String password;
+
+    @NotBlank(message = "角色不能为空")
     private String role;
+
+    @NotBlank(message = "姓名不能为空")
     private String name;
+
+    @NotBlank(message = "电话不能为空")
+    @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式错误")
     private String phone;
+
     private String gender;
 
     public String getAccount() { return account; }

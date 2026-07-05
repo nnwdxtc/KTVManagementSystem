@@ -3,6 +3,7 @@ package com.ktv.service;
 import com.ktv.dao.KTVRoomDAO;
 import com.ktv.dao.ReservationDAO;
 import com.ktv.dao.RoomUsageDAO;
+import com.ktv.common.Constants;
 import com.ktv.entity.KTVRoom;
 import com.ktv.entity.Reservation;
 import com.ktv.entity.RoomUsage;
@@ -30,17 +31,14 @@ public class RoomUsageService {
 
 
 
-        // 1. 房间必须已预约
         KTVRoom room = roomDAO.getRoomByNo(roomNo);
-        if (room == null || "未预约".equals(room.getRoomStatus())) {
-            throw new BizException("Room not in reserved status");
+        if (room == null || Constants.ROOM_STATUS_UNRESERVED.equals(room.getRoomStatus())) {
+            throw new BizException("房间未处于已预约状态");
         }
-        // 2. 必须存在有效预约
-        if(roomStatus.equals("未预约")){
-            if ("使用中".equals(room.getRoomStatus())) {
-                // 使用中 → 未预约：检查是否还有其他预约记录
+        if (Constants.ROOM_STATUS_UNRESERVED.equals(roomStatus)) {
+            if (Constants.ROOM_STATUS_IN_USE.equals(room.getRoomStatus())) {
                 List<Reservation> reservations = reservationDAO.selectByRoom(roomNo);
-                String newStatus = (reservations != null && !reservations.isEmpty()) ? "已预约" : "未预约";
+                String newStatus = (reservations != null && !reservations.isEmpty()) ? Constants.ROOM_STATUS_RESERVED : Constants.ROOM_STATUS_UNRESERVED;
                 
                 // 删除房间使用记录
                 RoomUsage activeUsage = usageDAO.getActive(roomNo);
@@ -55,14 +53,13 @@ public class RoomUsageService {
                 if (!roomDAO.updateRoom(room)) {
                     throw new BizException("Update room status failed");
                 }
-            } else if ("已预约".equals(room.getRoomStatus())) {
+            } else if (Constants.ROOM_STATUS_RESERVED.equals(room.getRoomStatus())) {
 
                 Reservation r = reservationDAO.select(roomNo);
                 if (r == null) {
-                    throw new BizException("No active reservation for this room");
+                    throw new BizException("该房间没有有效预约");
                 }
-                // 已预约 → 未预约：删除预约记录并改为未预约
-                room.setRoomStatus("未预约");
+                room.setRoomStatus(Constants.ROOM_STATUS_UNRESERVED);
                 if (!roomDAO.updateRoom(room)) {
                     throw new BizException("Update room status failed");
                 }
@@ -100,6 +97,11 @@ public class RoomUsageService {
                 throw new BizException("使用时间段必须在某个预约时段范围内");
             }
 
+            // 超时校验：实际开始时间不得落后于预约开始时间超过30分钟
+            if (start.isAfter(matchedReservation.getStartTime().plusMinutes(30))) {
+                throw new BizException("超时无法使用，请重新输入或改成未预约状态");
+            }
+
 
 
             // 写使用记录
@@ -112,9 +114,8 @@ public class RoomUsageService {
                 throw new BizException("删除预约记录失败");
             }
 
-            // 更新房间状态为使用中
             room.setSales(room.getSales() + 1);
-            room.setRoomStatus("使用中");
+            room.setRoomStatus(Constants.ROOM_STATUS_IN_USE);
             if (!roomDAO.updateRoom(room)) {
                 throw new BizException("更新房间状态失败");
             }
@@ -122,50 +123,36 @@ public class RoomUsageService {
 
     }
 
-    /* 服务员结账：手动传结束时间 */
     public void endUsingRoom(String roomNo, LocalDateTime endTime) {
         RoomUsage usage = usageDAO.selectActive(roomNo);
         if (usage == null) {
-            throw new BizException("Room not in usage");
+            throw new BizException("房间未在使用中");
         }
-        // 1. 更新结束时间（不再用 now()）
         if (!usageDAO.endUsage(roomNo, endTime)) {
-            throw new BizException("End usage failed");
+            throw new BizException("结束使用记录失败");
         }
-        // 2. 房间回空闲 & 销量+1
         KTVRoom room = roomDAO.getRoomByNo(roomNo);
-        room.setRoomStatus("未预约");
+        room.setRoomStatus(Constants.ROOM_STATUS_UNRESERVED);
         room.setSales(room.getSales() + 1);
         if (!roomDAO.updateRoom(room)) {
-            throw new BizException("Update room failed");
+            throw new BizException("更新房间状态失败");
         }
     }
+
+    public void endUsingRoom(String roomNo) {
+        endUsingRoom(roomNo, LocalDateTime.now());
+    }
+
     public boolean saveUsage(RoomUsage u) {
         return usageDAO.updateUsage(u);
     }
+
     public boolean deleteUsage(String account, String roomId) {
         return usageDAO.deleteUsage(account, roomId);
     }
+
     public boolean deleteBatchUsage(List<String> accounts, List<String> roomIds) {
         return usageDAO.deleteBatch(accounts, roomIds);
-    }
-    /* 服务员结账 */
-    public void endUsingRoom(String roomNo) {
-        RoomUsage usage = usageDAO.selectActive(roomNo);
-        if (usage == null) {
-            throw new BizException("Room not in usage");
-        }
-        // 1. 更新结束时间
-        if (!usageDAO.endUsage(roomNo, LocalDateTime.now())) {
-            throw new BizException("End usage failed");
-        }
-        // 2. 房间回空闲 & 销+1
-        KTVRoom room = roomDAO.getRoomByNo(roomNo);
-        room.setRoomStatus("未预约");
-        room.setSales(room.getSales() + 1);
-        if (!roomDAO.updateRoom(room)) {
-            throw new BizException("Update room failed");
-        }
     }
 
     /* 查询 */

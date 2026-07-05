@@ -426,11 +426,10 @@
     function delSong(id) {
         if (!confirm('确定删除这首歌曲吗？删除后无法恢复。')) return;
 
-        axios.delete('/song/manage?ids=' + id)
+        axios.delete('/song/manage/' + id)
             .then(res => {
                 if (res.data.success) {
                     alert('删除成功');
-                    // 如果当前页删除最后一条记录且不是第一页，则跳转到前一页
                     if (allSongs.length === 1 && currentPage > 1) {
                         loadSongs(currentPage - 1);
                     } else {

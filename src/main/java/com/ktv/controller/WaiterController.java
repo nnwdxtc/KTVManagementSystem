@@ -22,7 +22,7 @@ public class WaiterController {
     }
 
     @GetMapping("/contact")
-    public R<Waiter> contact(@RequestParam String waiterId) {
+    public R<Waiter> contact(@RequestParam("waiterId") String waiterId) {
         return R.ok(waiterService.getContact(waiterId));
     }
     @PostMapping("/manage")
@@ -30,7 +30,7 @@ public class WaiterController {
         return waiterService.saveWaiter(w) ? R.ok(null) : R.fail("保存失败");
     }
     @DeleteMapping("/manage/{ids}")
-    public R<Void> deleteWaiter(@PathVariable List<String> ids){
+    public R<Void> deleteWaiter(@PathVariable("ids") List<String> ids){
         waiterService.deleteBatchWaiter(ids);
         return R.ok(null);
     }

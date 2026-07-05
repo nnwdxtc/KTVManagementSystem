@@ -1,78 +1,136 @@
 package com.ktv.dao;
 
-import com.ktv.entity.Reservation;
 import com.ktv.entity.RoomUsage;
-import org.springframework.stereotype.Repository;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Repository;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Repository
 public class RoomUsageDAO extends BaseDAO {
 
-    public boolean insert(String account, String roomId, LocalDateTime start, LocalDateTime end) {
-        String sql = "INSERT INTO 房间使用记录 (顾客账号, 房间号, 开始使用时间, 结束使用时间) VALUES (?,?,?,?)";
-        return executeUpdate(sql, account, roomId, start, end) > 0;
+    /**
+     * ✅ 插入使用记录（通过顾客账号、房间号、开始时间、结束时间）
+     */
+    public boolean insert(String account, String roomNo, LocalDateTime start, LocalDateTime end) {
+        String sql = "INSERT INTO 房间使用记录 (顾客账号, 房间号, 开始使用时间, 结束使用时间) VALUES (?, ?, ?, ?)";
+        return executeUpdate(sql, account, roomNo, start, end) > 0;
     }
 
-    public boolean endUsage(String roomId, LocalDateTime end) {
-        String sql = "UPDATE 房间使用记录 SET 结束使用时间=? " +
-                "WHERE 房间号=? AND 结束使用时间 IS NULL";
-        return executeUpdate(sql, end, roomId) > 0;
-    }
-    public boolean updateUsage(Reservation r) {
-        String sql = "UPDATE 预约单 SET 预约开始时间=?,预约结束时间=? WHERE 顾客账号=? AND 房间号=?";
-        return executeUpdate(sql, r.getStartTime(), r.getEndTime(), r.getAccount(), r.getRoomId()) > 0;
-    }
-    public boolean deleteUsage(String account, String roomId) {
-        return executeUpdate("DELETE FROM 预约单 WHERE 顾客账号=? AND 房间号= ?", account, roomId) > 0;
-    }
-    
-    public boolean deleteRoomUsage(String account, String roomId) {
-        return executeUpdate("DELETE FROM 房间使用记录 WHERE 顾客账号=? AND 房间号= ?", account, roomId) > 0;
-    }
-    public boolean deleteBatch(List<String> accounts, List<String> roomIds) {
-        if (accounts.isEmpty()) return true;
-        String qs = accounts.stream().map(i -> "(?,?)").collect(Collectors.joining(","));
-        Object[] args = new Object[accounts.size() * 2];
-        for (int i = 0; i < accounts.size(); i++) {
-            args[i * 2] = accounts.get(i);
-            args[i * 2 + 1] = roomIds.get(i);
-        }
-        return executeUpdate("DELETE FROM 预约单 WHERE (顾客账号,房间号) IN (" + qs + ")", args) > 0;
-    }
-    public RoomUsage selectActive(String roomId) {
-        return queryForObject("SELECT * FROM 房间使用记录 " +
-                "WHERE 房间号=? AND 结束使用时间 IS NULL", new RowMapperImpl(), roomId);
-    }
-
-    public RoomUsage getActive(String roomId) {
-        return queryForObject("SELECT * FROM 房间使用记录 " +
-                "WHERE 房间号=?", new RowMapperImpl(), roomId);
-    }
-    public boolean updateUsage(RoomUsage u) {
-        String sql = "UPDATE 房间使用记录 SET 开始使用时间=?,结束使用时间=? WHERE 顾客账号=? AND 房间号=?";
+    /**
+     * 插入使用记录（通过 RoomUsage 对象）
+     */
+    public boolean insert(RoomUsage usage) {
+        String sql = "INSERT INTO 房间使用记录 (顾客账号, 房间号, 开始使用时间, 结束使用时间) VALUES (?, ?, ?, ?)";
         return executeUpdate(sql,
-                u.getStartTime(), u.getEndTime(),
-                u.getAccount(), u.getRoomId()) > 0;
+                usage.getAccount(),
+                usage.getRoomId(),
+                usage.getStartTime(),
+                usage.getEndTime()) > 0;
     }
 
-    public List<RoomUsage> selectByCustomer(String account) {
-        return queryForList("SELECT * FROM 房间使用记录 WHERE 顾客账号=?", new RowMapperImpl(), account);
+    /**
+     * ✅ 获取当前正在使用的房间记录（结束使用时间为null表示使用中）
+     */
+    public RoomUsage getActive(String roomNo) {
+        String sql = "SELECT * FROM 房间使用记录 WHERE 房间号 = ? AND 结束使用时间 IS NULL ORDER BY 开始使用时间 DESC LIMIT 1";
+        return queryForObject(sql, new RoomUsageRowMapper(), roomNo);
     }
 
-    private static class RowMapperImpl implements RowMapper<RoomUsage> {
-        public RoomUsage mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
-            RoomUsage u = new RoomUsage();
-            u.setAccount(rs.getString("顾客账号"));
-            u.setRoomId(rs.getString("房间号"));
-            u.setStartTime(rs.getTimestamp("开始使用时间").toLocalDateTime());
-            // 数据库 NULL 时返回 null，避免 NPE
-            java.sql.Timestamp ts = rs.getTimestamp("结束使用时间");
-            u.setEndTime(ts == null ? null : ts.toLocalDateTime());
-            return u;
+    /**
+     * ✅ 获取当前正在使用的房间记录（别名方法）
+     */
+    public RoomUsage selectActive(String roomNo) {
+        String sql = "SELECT * FROM 房间使用记录 WHERE 房间号 = ? AND 结束使用时间 IS NULL ORDER BY 开始使用时间 DESC LIMIT 1";
+        return queryForObject(sql, new RoomUsageRowMapper(), roomNo);
+    }
+
+    /**
+     * ✅ 结束使用（更新结束时间）
+     */
+    public boolean endUsage(String roomNo, LocalDateTime endTime) {
+        String sql = "UPDATE 房间使用记录 SET 结束使用时间 = ? WHERE 房间号 = ? AND 结束使用时间 IS NULL";
+        return executeUpdate(sql, endTime, roomNo) > 0;
+    }
+
+    /**
+     * ✅ 删除使用记录
+     */
+    public boolean deleteRoomUsage(String account, String roomNo) {
+        String sql = "DELETE FROM 房间使用记录 WHERE 顾客账号 = ? AND 房间号 = ?";
+        return executeUpdate(sql, account, roomNo) > 0;
+    }
+
+    /**
+     * ✅ 删除使用记录（别名方法）
+     */
+    public boolean deleteUsage(String account, String roomId) {
+        String sql = "DELETE FROM 房间使用记录 WHERE 顾客账号 = ? AND 房间号 = ?";
+        return executeUpdate(sql, account, roomId) > 0;
+    }
+
+    /**
+     * ✅ 批量删除使用记录
+     */
+    public boolean deleteBatch(List<String> accounts, List<String> roomIds) {
+        if (accounts.isEmpty() || roomIds.isEmpty()) return true;
+        // 简单实现：逐条删除
+        boolean success = true;
+        for (int i = 0; i < accounts.size(); i++) {
+            if (!deleteUsage(accounts.get(i), roomIds.get(i))) {
+                success = false;
+            }
+        }
+        return success;
+    }
+
+    /**
+     * ✅ 更新使用记录
+     */
+    public boolean updateUsage(RoomUsage u) {
+        String sql = "UPDATE 房间使用记录 SET 开始使用时间 = ?, 结束使用时间 = ? WHERE 顾客账号 = ? AND 房间号 = ?";
+        return executeUpdate(sql, u.getStartTime(), u.getEndTime(), u.getAccount(), u.getRoomId()) > 0;
+    }
+
+    /**
+     * 获取所有使用记录
+     */
+    public List<RoomUsage> getAll() {
+        String sql = "SELECT * FROM 房间使用记录 ORDER BY 开始使用时间 DESC";
+        return queryForList(sql, new RoomUsageRowMapper());
+    }
+
+    /**
+     * 通过房间号获取使用记录
+     */
+    public List<RoomUsage> selectByRoom(String roomId) {
+        String sql = "SELECT * FROM 房间使用记录 WHERE 房间号 = ? ORDER BY 开始使用时间 DESC";
+        return queryForList(sql, new RoomUsageRowMapper(), roomId);
+    }
+
+    /**
+     * RowMapper 实现
+     */
+    private static class RoomUsageRowMapper implements RowMapper<RoomUsage> {
+        @Override
+        public RoomUsage mapRow(ResultSet rs, int rowNum) throws SQLException {
+            RoomUsage usage = new RoomUsage();
+            usage.setAccount(rs.getString("顾客账号"));
+            usage.setRoomId(rs.getString("房间号"));
+            try {
+                usage.setStartTime(rs.getTimestamp("开始使用时间").toLocalDateTime());
+            } catch (Exception e) {
+                usage.setStartTime(null);
+            }
+            try {
+                usage.setEndTime(rs.getTimestamp("结束使用时间").toLocalDateTime());
+            } catch (Exception e) {
+                usage.setEndTime(null);
+            }
+            return usage;
         }
     }
 }

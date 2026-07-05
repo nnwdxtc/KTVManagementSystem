@@ -70,7 +70,5 @@ public class SongService {
 
 
 
-    public void removeSongs(List<Integer> ids){
-        songDAO.deleteBatchIds(ids);
-    }
+
 }

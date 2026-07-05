@@ -3,9 +3,12 @@ package com.ktv.service;
 import com.ktv.dao.CustomerDAO;
 import com.ktv.dao.UserLoginDAO;
 import com.ktv.dao.WaiterDAO;
+import com.ktv.common.Constants;
 import com.ktv.entity.Customer;
 import com.ktv.entity.UserLogin;
 import com.ktv.entity.Waiter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +21,8 @@ import java.util.stream.Collectors;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     @Resource
     private UserLoginDAO userLoginDAO;
 
@@ -27,16 +32,15 @@ public class AuthService {
     @Resource
     private WaiterDAO waiterDAO;
 
-    // 登录方法 - 添加captcha参数但不验证（前端已验证）
     public Map<String, Object> login(String account, String password, String role, String captcha) {
         Map<String, Object> result = new HashMap<>();
 
-        System.out.println("登录参数：account=" + account + ", role=" + role + ", captcha=" + captcha);
+        log.info("登录参数：account={}, role={}, captcha={}", account, role, captcha);
         UserLogin user = userLoginDAO.getUserByAccount(account);
-        System.out.println("数据库查询结果：user=" + user);
+        log.info("数据库查询结果：user={}", user);
         if (user != null) {
-            System.out.println("数据库角色：" + user.getRole() + "，输入角色：" + role);
-            System.out.println("密码匹配：" + user.getPassword().equals(password));
+            log.info("数据库角色：{}，输入角色：{}", user.getRole(), role);
+            log.info("密码匹配：{}", user.getPassword().equals(password));
         }
 
         // 1. 格式校验
@@ -52,16 +56,15 @@ public class AuthService {
             return fail("账号或密码或角色错误");
         }
 
-        // 3. 按角色加载详情并设置跳转路径
         String redirectPath = "";
-        if ("顾客".equals(role)) {
+        if (Constants.ROLE_CUSTOMER.equals(role)) {
             Customer c = customerDAO.getCustomerById(account);
             if (c == null) {
                 return fail("顾客信息不存在");
             }
             result.put("detail", c);
             redirectPath = "customer";
-        } else if ("服务员".equals(role)) {
+        } else if (Constants.ROLE_WAITER.equals(role)) {
             Waiter w = waiterDAO.getById(account);
             if (w == null) {
                 return fail("服务员信息不存在");
@@ -93,8 +96,7 @@ public class AuthService {
         UserLogin ul = new UserLogin(account, password, role);
         if (!userLoginDAO.addUser(ul)) return fail("创建用户失败");
 
-        // 3 写顾客表（顾客角色）
-        if ("顾客".equals(role)) {
+        if (Constants.ROLE_CUSTOMER.equals(role)) {
             Customer c = new Customer(account, name, gender, phone);
             if (!customerDAO.addCustomer(c)) {
                 throw new RuntimeException("创建顾客失败");
@@ -106,7 +108,7 @@ public class AuthService {
     public boolean changePassword(String account, String oldPwd, String newPwd) {
         if (!userLoginDAO.isValidPassword(newPwd)) return false;
         UserLogin u = userLoginDAO.getUserByAccount(account);
-        System.out.println(u.getPassword());
+        log.debug("用户密码验证：account={}", account);
         if (u == null || !u.getPassword().equals(oldPwd)) return false;
         return userLoginDAO.changePassword(account, newPwd);
     }

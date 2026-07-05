@@ -1,6 +1,8 @@
 package com.ktv.dao;
 
 import com.ktv.entity.KTVRoom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -11,6 +13,8 @@ import java.util.stream.Collectors;
 
 @Repository
 public class KTVRoomDAO extends BaseDAO {
+
+    private static final Logger log = LoggerFactory.getLogger(KTVRoomDAO.class);
 
     public boolean addRoom(KTVRoom r) {
         String sql = "INSERT INTO KTV房间 (房间号, 房间类型, 销量, 房间状态) VALUES (?,?,?,?)";
@@ -48,7 +52,7 @@ public class KTVRoomDAO extends BaseDAO {
     }
 
 
-    public List<KTVRoom> getooms() {
+    public List<KTVRoom> getRooms() {
         String sql = "SELECT r.房间号, r.房间类型, r.销量, r.房间状态, " +
                 "b.顾客账号, c.姓名 AS 顾客姓名, c.联系电话, " +
                 "b.预约开始时间, b.预约结束时间 " +
@@ -81,10 +85,10 @@ public class KTVRoomDAO extends BaseDAO {
                 r.setCustomerPhone(rs.getString("联系电话"));
                 Timestamp start = rs.getTimestamp("预约开始时间");
                 Timestamp end   = rs.getTimestamp("预约结束时间");
-                r.setStartDate(start == null ? null : new Date(start.getTime()));
-                r.setEndDate(end == null ? null : new Date(end.getTime()));
+                r.setStartTime(start == null ? null : new Date(start.getTime()));
+                r.setEndTime(end == null ? null : new Date(end.getTime()));
             }catch (Exception e){
-                System.out.println(e.getMessage());
+                log.debug("解析房间扩展信息失败: {}", e.getMessage());
                 return r;
             }
 

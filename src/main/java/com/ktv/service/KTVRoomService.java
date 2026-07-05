@@ -17,7 +17,7 @@ public class KTVRoomService {
 
 
     public List<KTVRoom> list() {
-        return dao.getooms();
+        return dao.getRooms();
     }
 
 

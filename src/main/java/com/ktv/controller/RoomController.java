@@ -7,15 +7,13 @@ import com.ktv.dto.ReserveDTO;
 import com.ktv.dto.StartRoomDTO;
 import com.ktv.entity.KTVRoom;
 import com.ktv.entity.Reservation;
-import com.ktv.entity.RoomUsage;
-
 import com.ktv.service.KTVRoomService;
 import com.ktv.service.ReservationService;
 import com.ktv.service.RoomUsageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -27,20 +25,16 @@ public class RoomController {
     @Autowired private ReservationService reservationService;
     @Autowired private RoomUsageService usageService;
 
-    /* 前端：大厅房态大屏 */
     @GetMapping("/list")
     public R<List<KTVRoom>> listRooms() {
         return R.ok(roomService.listRooms());
     }
-
 
     @GetMapping("/rooms")
     public R<List<KTVRoom>> listRoom() {
         return R.ok(roomService.list());
     }
 
-
-    /* 服务员：新增房间 */
     @PostMapping("/add")
     public R<Void> addRoom(@RequestBody KTVRoom room) {
         if (roomService.getRoomDetail(room.getRoomId()) == null ) {
@@ -51,9 +45,8 @@ public class RoomController {
         }
     }
 
-    /* 服务员：删除房间 */
     @DeleteMapping("/delete")
-    public R<Void> deleteRoom(@RequestParam String roomId) {
+    public R<Void> deleteRoom(@RequestParam("roomId") String roomId) {
         boolean success=false;
         try {
             success = roomService.deleteRoom(roomId);
@@ -61,73 +54,72 @@ public class RoomController {
         }catch (Exception e){
             return  R.fail("删除失败,房间正在使用");
         }
-
     }
-
 
     @GetMapping("/byStatus")
     public R<List<KTVRoom>> byStatus() {
         return R.ok(roomService.listByStatus());
     }
 
-    /* 顾客：预约房间 */
     @PostMapping("/reserve")
     public R<Void> reserve(@RequestBody ReserveDTO dto) {
-        reservationService.createReservation(dto.getCustomerId(),
+        boolean success = reservationService.createReservation(
+                dto.getCustomerId(),
                 dto.getRoomNo(),
                 dto.getStartTime(),
                 dto.getEndTime());
-        return R.ok(null);
+        return success ? R.ok(null) : R.fail("预约失败，该时段已被预约");
     }
 
-    /* 顾客：取消预约 */
     @DeleteMapping("/reserve")
-    public R<Void> cancel(@RequestParam String customerId,
-                          @RequestParam String roomNo) {
-        reservationService.deleteReservation(customerId, roomNo);
-        return R.ok(null);
+    public R<Void> cancel(
+            @RequestParam(value = "customerId", required = false) String customerId,
+            @RequestParam(value = "roomNo", required = false) String roomNo,
+            @RequestParam(value = "reservationId", required = false) Integer reservationId) {
+
+        if (reservationId != null && reservationId > 0) {
+            boolean success = reservationService.deleteReservationById(reservationId);
+            return success ? R.ok(null) : R.fail("取消预约失败");
+        } else if (customerId != null && !customerId.isEmpty() && roomNo != null && !roomNo.isEmpty()) {
+            reservationService.deleteReservation(customerId, roomNo);
+            return R.ok(null);
+        } else {
+            return R.fail("缺少取消预约的必要参数");
+        }
     }
 
-    /* 顾客：查询我的预约记录（调用存储过程） */
     @GetMapping("/reservations")
-    public R<List<Reservation>> getMyReservations(@RequestParam String customerId) {
+    public R<List<Reservation>> getMyReservations(@RequestParam("customerId") String customerId) {
         List<Reservation> list = reservationService.listByCustomer(customerId);
         return R.ok(list);
     }
 
-    /* 服务员：开房 */
+    @GetMapping("/allReservations")
+    public R<List<Reservation>> getAllReservations() {
+        List<Reservation> list = reservationService.listAll();
+        return R.ok(list);
+    }
+
+    /* ✅ 修复：开房 - String 转 LocalDateTime */
     @PostMapping("/start")
     public R<Void> start(@RequestBody StartRoomDTO dto) {
-        usageService.startUsingRoom(dto.getWaiterId(),
+        LocalDateTime startTime = LocalDateTime.parse(dto.getStartTime());
+        LocalDateTime endTime = LocalDateTime.parse(dto.getEndTime());
+
+        usageService.startUsingRoom(
+                dto.getWaiterId(),
                 dto.getRoomNo(),
                 dto.getRoomStatus(),
-                dto.getStartTime(),
-                dto.getEndTime());
+                startTime,
+                endTime);
         return R.ok(null);
     }
 
-    /* 服务员：结账 */
+    /* ✅ 修复：结账 - String 转 LocalDateTime */
     @PostMapping("/end")
     public R<Void> end(@RequestBody EndRoomDTO dto) {
-        usageService.endUsingRoom(dto.getRoomNo(), dto.getEndTime());
+        LocalDateTime endTime = LocalDateTime.parse(dto.getEndTime());
+        usageService.endUsingRoom(dto.getRoomNo(), endTime);
         return R.ok(null);
     }
-    @RestController
-    @RequestMapping("/api/room-usage")
-    public class RoomUsageController {
-        @Resource
-        private RoomUsageService roomUsageService;
-
-        @PostMapping("/manage")
-        public R<Void> saveUsage(@RequestBody RoomUsage u){
-            return roomUsageService.saveUsage(u) ? R.ok(null) : R.fail("保存失败");
-        }
-        @DeleteMapping("/manage")
-        public R<Void> deleteUsage(@RequestParam String account, @RequestParam String roomId){
-            roomUsageService.deleteUsage(account, roomId);
-            return R.ok(null);
-        }
-
-    }
-
 }
